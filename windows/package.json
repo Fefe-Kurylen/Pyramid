@@ -170,9 +170,9 @@
       ]
     },
     "appx": {
-      "identityName": "PyramidPDF.Test",
-      "publisher": "CN=PyramidPDFTest",
-      "publisherDisplayName": "Pyramid PDF",
+      "identityName": "Kurylen.PyramidPDF",
+      "publisher": "CN=B85CD3FF-A422-425E-9A54-A6E74180E94E",
+      "publisherDisplayName": "Kurylen",
       "applicationId": "PyramidPDF",
       "displayName": "Pyramid PDF",
       "backgroundColor": "transparent",
