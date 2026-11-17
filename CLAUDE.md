@@ -57,7 +57,7 @@ Installation actuelle sur le PC : `C:\Users\felix\AppData\Local\Programs\Pyramid
 (mise à jour rapide : remplacer `resources\app.asar` par `dist\win-unpacked\resources\app.asar`, Pyramid fermé).
 
 ## 🔄 Mises à jour
-- Les mises à jour passent par le **Microsoft Store** (compte développeur de Félix créé, nom « Pyramid PDF » réservé). Identité Store dans `build.appx` de `windows/package.json` : `Kurylen.PyramidPDF`, `CN=B85CD3FF-A422-425E-9A54-A6E74180E94E`, éditeur `Kurylen` ; logos dans `windows/build/appx/`.
+- Les mises à jour passent par le **Microsoft Store** (compte développeur de Félix créé, nom « Pyramid PDF » réservé). **Version 1.3.0 soumise le 17/11/2026** (fiche en français, runFullTrust justifié, politique de confidentialité = URL GitHub de PRIVACY.md) — en certification. Identité Store dans `build.appx` de `windows/package.json` : `Kurylen.PyramidPDF`, `CN=B85CD3FF-A422-425E-9A54-A6E74180E94E`, éditeur `Kurylen` ; logos dans `windows/build/appx/`.
 - Nouvelle version : augmenter `version` dans `windows/package.json`, pousser sur GitHub, récupérer le `.appx` dans les artifacts du workflow `windows-store.yml`, puis Partner Center → nouvelle soumission → Packages.
 - L'ancien système electron-updater / GitHub Releases a été retiré (v1.2.0). GitHub sert uniquement de stockage.
 - Version actuelle : 1.3.0 (Windows, Mac, iPhone, Android). Le dossier de données reste `%APPDATA%\Pyramid` (`app.setPath('userData', …)` dans main.js) pour garder les réglages.
