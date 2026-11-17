@@ -1,0 +1,70 @@
+# Fabrique le paquet Microsoft Store (MSIX/APPX) de Pyramid PDF sur un vrai Windows,
+# puis le teste : signature de test, installation, lancement, certification Microsoft (WACK)
+name: Windows - paquet Microsoft Store
+on:
+  push:
+    paths: ['windows/**', 'web/**', '.github/workflows/windows-store.yml']
+  workflow_dispatch:
+jobs:
+  msix:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: windows
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Fabrication du paquet Store
+        run: npx electron-builder --win appx --x64 --publish never
+      - name: Installation et lancement (signature de test)
+        run: |
+          $pkgFile = Get-ChildItem dist\*.appx, dist\*.msix -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $pkgFile) { throw "Paquet introuvable" }
+          "Paquet : $($pkgFile.Name) ($([math]::Round($pkgFile.Length/1MB,1)) Mo)"
+          $pub = node -p "require('./package.json').build.appx.publisher"
+          $name = node -p "require('./package.json').build.appx.identityName"
+          $cert = New-SelfSignedCertificate -Type Custom -Subject $pub -KeyUsage DigitalSignature -FriendlyName "Pyramid test" -CertStoreLocation "Cert:\CurrentUser\My" -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}")
+          $pw = ConvertTo-SecureString -String "test" -Force -AsPlainText
+          Export-PfxCertificate -Cert $cert -FilePath test.pfx -Password $pw | Out-Null
+          Copy-Item $pkgFile.FullName test.appx
+          $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName -Descending | Select-Object -First 1
+          & $signtool.FullName sign /fd SHA256 /f test.pfx /p test test.appx
+          if ($LASTEXITCODE -ne 0) { throw "Signature de test impossible" }
+          Import-PfxCertificate -FilePath test.pfx -CertStoreLocation Cert:\LocalMachine\TrustedPeople -Password $pw | Out-Null
+          Add-AppxPackage -Path test.appx
+          $pkg = Get-AppxPackage -Name $name
+          if (-not $pkg) { throw "Installation échouée" }
+          $pkg | Format-List Name, Version, PackageFamilyName, InstallLocation, Status
+          Start-Process "shell:AppsFolder\$($pkg.PackageFamilyName)!PyramidPDF"
+          Start-Sleep -Seconds 20
+          $procs = Get-Process | Where-Object { $_.Path -and $_.Path.StartsWith($pkg.InstallLocation) }
+          if (-not $procs) { throw "L'appli ne s'est pas lancée" }
+          "✅ Appli lancée ($($procs.Count) processus)"
+          $procs | Stop-Process -Force
+          Start-Sleep -Seconds 3
+          Remove-AppxPackage $pkg.PackageFullName
+          "✅ Désinstallation OK"
+      - name: Certification Microsoft (Windows App Certification Kit)
+        continue-on-error: true
+        run: |
+          $appcert = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\App Certification Kit\appcert.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $appcert) { "WACK non disponible sur cette machine"; exit 0 }
+          $pkgFile = Get-ChildItem dist\*.appx, dist\*.msix -ErrorAction SilentlyContinue | Select-Object -First 1
+          & $appcert.FullName reset
+          & $appcert.FullName test -appxpackagepath $pkgFile.FullName -reportoutputpath "$PWD\wack-rapport.xml"
+          if (Test-Path wack-rapport.xml) {
+            [xml]$r = Get-Content wack-rapport.xml
+            "Résultat global : $($r.REPORT.OVERALL_RESULT)"
+            $r.SelectNodes('//TEST') | ForEach-Object { "{0,-8} {1}" -f $_.RESULT.InnerText, $_.NAME }
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pyramid-pdf-store
+          path: |
+            windows/dist/*.appx
+            windows/wack-rapport.xml
+          if-no-files-found: warn

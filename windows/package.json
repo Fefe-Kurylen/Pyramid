@@ -5,7 +5,8 @@
   "main": "main.js",
   "scripts": {
     "dist": "electron-builder --win --x64 --publish never",
-    "dist:mac": "electron-builder --mac --publish never"
+    "dist:mac": "electron-builder --mac --publish never",
+    "dist:store": "electron-builder --win appx --x64 --publish never"
   },
   "keywords": [],
   "author": "Pyramid PDF",
@@ -167,6 +168,20 @@
           "rank": "Alternate"
         }
       ]
+    },
+    "appx": {
+      "identityName": "PyramidPDF.Test",
+      "publisher": "CN=PyramidPDFTest",
+      "publisherDisplayName": "Pyramid PDF",
+      "applicationId": "PyramidPDF",
+      "displayName": "Pyramid PDF",
+      "backgroundColor": "transparent",
+      "showNameOnTiles": false,
+      "languages": [
+        "fr-FR"
+      ],
+      "addAutoLaunchExtension": false,
+      "artifactName": "Pyramid-PDF-Store-${version}.${ext}"
     }
   }
 }
