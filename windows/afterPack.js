@@ -13,11 +13,11 @@ exports.default = async function (ctx) {
   R.Resource.IconGroupEntry.replaceIconsForResource(res.entries, gid, glang, ico.icons.map(i => i.data));
   const vi = R.Resource.VersionInfo.fromEntries(res.entries)[0];
   const lang = vi.getAllLanguagesForStringValues()[0] || { lang: 1033, codepage: 1200 };
-  vi.setStringValues(lang, { ProductName: 'Pyramid', FileDescription: 'Pyramid', CompanyName: 'Pyramid', LegalCopyright: '© 2026 Pyramid', OriginalFilename: 'Pyramid.exe', InternalName: 'Pyramid' });
+  vi.setStringValues(lang, { ProductName: 'Pyramid PDF', FileDescription: 'Pyramid PDF', CompanyName: 'Pyramid PDF', LegalCopyright: '© 2026 Pyramid PDF', OriginalFilename: path.basename(exe), InternalName: 'Pyramid PDF' });
   vi.removeStringValue(lang, 'Comments');
-  vi.setFileVersion(1, 0, 0, 0, lang.lang); vi.setProductVersion(1, 0, 0, 0, lang.lang);
+  const V = String(ctx.packager.appInfo.version).split('.').map(n => parseInt(n) || 0); vi.setFileVersion(V[0], V[1], V[2], 0, lang.lang); vi.setProductVersion(V[0], V[1], V[2], 0, lang.lang);
   vi.outputToResourceEntries(res.entries);
   res.outputResource(ex);
   fs.writeFileSync(exe, Buffer.from(ex.generate()));
-  console.log('  • icône et infos Pyramid appliquées à', path.basename(exe), '(groupe', gid + ')');
+  console.log('  • icône et infos Pyramid PDF appliquées à', path.basename(exe), '(groupe', gid + ')');
 };

@@ -1,13 +1,13 @@
 {
   "name": "pyramid",
-  "version": "1.1.0",
-  "description": "Pyramid — éditeur PDF",
+  "version": "1.2.0",
+  "description": "Pyramid PDF — éditeur PDF",
   "main": "main.js",
   "scripts": {
     "dist": "electron-builder --win --x64 --publish never"
   },
   "keywords": [],
-  "author": "Pyramid",
+  "author": "Pyramid PDF",
   "license": "ISC",
   "devDependencies": {
     "@fontsource/allura": "^5.3.0",
@@ -74,11 +74,11 @@
     "png2icons": "^2.0.1",
     "resedit": "^2.0.3"
   },
-  "productName": "Pyramid",
+  "productName": "Pyramid PDF",
   "build": {
     "appId": "fr.pyramid.pdf",
-    "productName": "Pyramid",
-    "copyright": "© 2026 Pyramid",
+    "productName": "Pyramid PDF",
+    "copyright": "© 2026 Pyramid PDF",
     "directories": {
       "output": "dist",
       "buildResources": "build"
@@ -114,21 +114,21 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": "always",
       "createStartMenuShortcut": true,
-      "shortcutName": "Pyramid",
+      "shortcutName": "Pyramid PDF",
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
       "installerLanguages": [
         "fr_FR"
       ],
       "language": "1036",
-      "artifactName": "Pyramid-Installation-${version}.exe",
+      "artifactName": "Pyramid-PDF-Installation-${version}.exe",
       "runAfterFinish": true,
       "deleteAppDataOnUninstall": false,
       "installerHeaderIcon": "build/icon.ico",
-      "uninstallDisplayName": "Pyramid"
+      "uninstallDisplayName": "Pyramid PDF"
     },
     "portable": {
-      "artifactName": "Pyramid-Portable-${version}.exe"
+      "artifactName": "Pyramid-PDF-Portable-${version}.exe"
     },
     "fileAssociations": [
       {
@@ -139,16 +139,6 @@
         "icon": "build/icon.ico"
       }
     ],
-    "publish": [
-      {
-        "provider": "github",
-        "owner": "Fefe-Kurylen",
-        "repo": "Pyramid",
-        "releaseType": "release"
-      }
-    ]
-  },
-  "dependencies": {
-    "electron-updater": "^6.8.11"
+    "publish": null
   }
 }

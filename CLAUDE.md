@@ -1,4 +1,4 @@
-# Pyramid — éditeur PDF de Félix
+# Pyramid PDF — éditeur PDF de Félix
 
 Logiciel Windows autonome (Electron) + version web, pour lire et modifier des PDF.
 Félix parle français : répondre en français, avec beaucoup d'emojis, réponses visuelles et structurées
@@ -23,7 +23,7 @@ Dossier du projet sur le PC : `C:\Users\felix\Desktop\Claude\Pyramid` (code dans
 
 ## 🔁 Synchronisation
 - Le dossier `Pyramid-code` du PC et le dépôt GitHub **Fefe-Kurylen/Pyramid** contiennent les mêmes fichiers : toute modification est faite aux deux endroits en même temps, et les fichiers obsolètes sont supprimés des deux côtés.
-- GitHub sert de stockage (code + installateurs en Releases).
+- GitHub sert uniquement de stockage du code.
 
 ## 🔨 Construire / installer
 ```
@@ -31,17 +31,15 @@ cd windows
 npm install
 python make-fonts.py      # une seule fois (polices)
 python make-app.py        # après chaque modification de web/index.html
-npm run dist              # → dist/Pyramid-Installation-1.0.0.exe + Pyramid-Portable-1.0.0.exe
+npm run dist              # → dist/Pyramid-PDF-Installation-X.Y.Z.exe + Pyramid-PDF-Portable-X.Y.Z.exe
 ```
 Installation actuelle sur le PC : `C:\Users\felix\AppData\Local\Programs\Pyramid`
 (mise à jour rapide : remplacer `resources\app.asar` par `dist\win-unpacked\resources\app.asar`, Pyramid fermé).
 
-## 🔄 Mises à jour automatiques
-- `electron-updater` (main.js : `initUpdater`, IPC `update-check`, `update-install`, `app-version`) ; bannière « Mise à jour prête » + ligne dans ⚙️ Personnaliser.
-- Publication : GitHub Releases du dépôt public **Fefe-Kurylen/Pyramid** (`build.publish` provider github).
-- Pour chaque nouvelle version : augmenter `version` dans `windows/package.json`, `npm run dist`, puis créer une release `vX.Y.Z` avec
-  `latest.yml`, `Pyramid-Installation-X.Y.Z.exe` et `.blockmap` (dossier `dist`). La version portable ne se met pas à jour.
-- Version actuelle : 1.1.0.
+## 🔄 Mises à jour
+- Les mises à jour passeront par le **Microsoft Store** (en préparation : compte développeur, réservation du nom « Pyramid PDF », identifiants du paquet à recevoir de Félix, paquet MSIX à fabriquer sur Windows).
+- L'ancien système electron-updater / GitHub Releases a été retiré (v1.2.0). GitHub sert uniquement de stockage.
+- Version actuelle : 1.2.0. Le dossier de données reste `%APPDATA%\Pyramid` (`app.setPath('userData', …)` dans main.js) pour garder les réglages.
 
 ## 🧠 Fonctionnement clé
 - **Modes** : `MODE = 'read' | 'edit'` (classe `reading` sur `<html>`). Le PDF s'ouvre en **lecteur** (pages continues,

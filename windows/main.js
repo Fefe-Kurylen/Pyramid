@@ -4,6 +4,8 @@ const os = require('os');
 const path = require('path');
 const fs = require('fs');
 
+// Garde les réglages de l’ancienne version « Pyramid »
+app.setPath('userData', path.join(app.getPath('appData'), 'Pyramid'));
 Menu.setApplicationMenu(null);
 nativeTheme.themeSource = 'dark';
 
@@ -17,14 +19,14 @@ function sendFiles(files){
     try {
       lastDir = path.dirname(f);
       win.webContents.send('open-file', { name: path.basename(f), data: fs.readFileSync(f) });
-    } catch (e) { dialog.showErrorBox('Pyramid', `Impossible d’ouvrir ${path.basename(f)}`); }
+    } catch (e) { dialog.showErrorBox('Pyramid PDF', `Impossible d’ouvrir ${path.basename(f)}`); }
   }
 }
 
 function createWindow(){
   win = new BrowserWindow({
     width: 1400, height: 900, minWidth: 820, minHeight: 560,
-    backgroundColor: '#1e2026', title: 'Pyramid', show: true,
+    backgroundColor: '#1e2026', title: 'Pyramid PDF', show: true,
     icon: path.join(__dirname, 'app', 'icon.png'),
     titleBarStyle: 'hidden',
     titleBarOverlay: { color: '#262930', symbolColor: '#e8eaf0', height: 52 },
@@ -33,7 +35,7 @@ function createWindow(){
   win.loadFile(path.join(__dirname, 'app', 'index.html'), process.env.PYR_DEBUG ? { query: { debug: '1' } } : undefined);
   win.webContents.on('will-prevent-unload', e => {
     const c = dialog.showMessageBoxSync(win, {
-      type: 'warning', title: 'Pyramid', buttons: ['Quitter sans exporter', 'Annuler'], defaultId: 1, cancelId: 1,
+      type: 'warning', title: 'Pyramid PDF', buttons: ['Quitter sans exporter', 'Annuler'], defaultId: 1, cancelId: 1,
       message: 'Certaines modifications n’ont pas été exportées.', detail: 'Si tu quittes maintenant, elles seront perdues.'
     });
     if (c === 0) e.preventDefault();
@@ -128,31 +130,9 @@ ipcMain.handle('tsa', async (e, url, body) => {
   if (!r.ok) throw new Error('HTTP ' + r.status);
   return new Uint8Array(await r.arrayBuffer());
 });
-/* ---------- Mises à jour automatiques (GitHub Releases) ---------- */
-let updater = null, updReady = null;
-function initUpdater(){
-  if (!app.isPackaged || process.env.PORTABLE_EXECUTABLE_DIR) return;
-  try { updater = require('electron-updater').autoUpdater; } catch { return; }
-  updater.autoDownload = true; updater.autoInstallOnAppQuit = true; updater.allowPrerelease = false;
-  updater.on('update-available', i => send('update', { state: 'downloading', version: i && i.version }));
-  updater.on('download-progress', p => send('update', { state: 'progress', percent: Math.round(p.percent || 0) }));
-  updater.on('update-downloaded', i => { updReady = i && i.version; send('update', { state: 'ready', version: updReady }); });
-  updater.on('error', err => { console.error('updater', err && err.message); send('update', { state: 'error' }); });
-  const check = () => updater.checkForUpdates().catch(() => {});
-  setTimeout(check, 8000); setInterval(check, 4 * 3600 * 1000);
-}
-const send = (ch, o) => { try { if (win && ready) win.webContents.send(ch, o); } catch {} };
-ipcMain.handle('update-check', async e => {
-  if (!fromApp(e)) return null;
-  if (!updater) return { state: 'unavailable', version: app.getVersion() };
-  if (updReady) return { state: 'ready', version: updReady };
-  try { const r = await updater.checkForUpdates(); const v = r && r.updateInfo && r.updateInfo.version; return { state: v && v !== app.getVersion() ? 'downloading' : 'latest', version: v || app.getVersion() }; }
-  catch { return { state: 'error', version: app.getVersion() }; }
-});
-ipcMain.handle('update-install', e => { if (!fromApp(e) || !updater || !updReady) return false; setImmediate(() => updater.quitAndInstall(false, true)); return true; });
 ipcMain.handle('app-version', e => fromApp(e) ? app.getVersion() : '');
 ipcMain.on('ready', e => {
-  if (!fromApp(e)) return; ready = true; const f = pending.splice(0); sendFiles(f); if (updReady) send('update', { state: 'ready', version: updReady }); });
+  if (!fromApp(e)) return; ready = true; const f = pending.splice(0); sendFiles(f); });
 
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
@@ -162,6 +142,6 @@ else {
     win.focus();
     sendFiles(fileArgs(argv.map((a, i) => i === 0 ? a : path.resolve(cwd || process.cwd(), a))));
   });
-  app.whenReady().then(() => { createWindow(); sendFiles(fileArgs(process.argv)); initUpdater(); });
+  app.whenReady().then(() => { createWindow(); sendFiles(fileArgs(process.argv)); });
   app.on('window-all-closed', () => app.quit());
 }
