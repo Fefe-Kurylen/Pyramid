@@ -1,0 +1,23 @@
+const fs = require('fs');
+const path = require('path');
+exports.default = async function (ctx) {
+  if (ctx.electronPlatformName !== 'win32') return;
+  const ResEdit = await import('resedit');
+  const R = ResEdit.default || ResEdit;
+  const exe = path.join(ctx.appOutDir, `${ctx.packager.appInfo.productFilename}.exe`);
+  const ex = R.NtExecutable.from(fs.readFileSync(exe), { ignoreCert: true });
+  const res = R.NtExecutableResource.from(ex);
+  const ico = R.Data.IconFile.from(fs.readFileSync(path.join(__dirname, 'build', 'icon.ico')));
+  const groups = R.Resource.IconGroupEntry.fromEntries(res.entries);
+  const gid = groups.length ? groups[0].id : 1, glang = groups.length ? groups[0].lang : 1033;
+  R.Resource.IconGroupEntry.replaceIconsForResource(res.entries, gid, glang, ico.icons.map(i => i.data));
+  const vi = R.Resource.VersionInfo.fromEntries(res.entries)[0];
+  const lang = vi.getAllLanguagesForStringValues()[0] || { lang: 1033, codepage: 1200 };
+  vi.setStringValues(lang, { ProductName: 'Pyramid', FileDescription: 'Pyramid', CompanyName: 'Pyramid', LegalCopyright: '© 2026 Pyramid', OriginalFilename: 'Pyramid.exe', InternalName: 'Pyramid' });
+  vi.removeStringValue(lang, 'Comments');
+  vi.setFileVersion(1, 0, 0, 0, lang.lang); vi.setProductVersion(1, 0, 0, 0, lang.lang);
+  vi.outputToResourceEntries(res.entries);
+  res.outputResource(ex);
+  fs.writeFileSync(exe, Buffer.from(ex.generate()));
+  console.log('  • icône et infos Pyramid appliquées à', path.basename(exe), '(groupe', gid + ')');
+};

@@ -1,0 +1,154 @@
+{
+  "name": "pyramid",
+  "version": "1.1.0",
+  "description": "Pyramid — éditeur PDF",
+  "main": "main.js",
+  "scripts": {
+    "dist": "electron-builder --win --x64 --publish never"
+  },
+  "keywords": [],
+  "author": "Pyramid",
+  "license": "ISC",
+  "devDependencies": {
+    "@fontsource/allura": "^5.3.0",
+    "@fontsource/anton": "^5.3.0",
+    "@fontsource/archivo-narrow": "^5.3.0",
+    "@fontsource/arimo": "^5.3.0",
+    "@fontsource/barlow": "^5.3.0",
+    "@fontsource/bodoni-moda": "^5.3.0",
+    "@fontsource/caladea": "^5.3.0",
+    "@fontsource/carlito": "^5.3.0",
+    "@fontsource/caveat": "^5.3.0",
+    "@fontsource/comic-neue": "^5.3.0",
+    "@fontsource/courier-prime": "^5.3.0",
+    "@fontsource/cousine": "^5.3.0",
+    "@fontsource/crimson-text": "^5.3.0",
+    "@fontsource/dancing-script": "^5.3.0",
+    "@fontsource/dm-sans": "^5.3.0",
+    "@fontsource/eb-garamond": "^5.3.0",
+    "@fontsource/fira-sans": "^5.3.0",
+    "@fontsource/gelasio": "^5.3.0",
+    "@fontsource/great-vibes": "^5.3.0",
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@fontsource/ibm-plex-sans": "^5.3.0",
+    "@fontsource/ibm-plex-serif": "^5.3.0",
+    "@fontsource/inconsolata": "^5.3.0",
+    "@fontsource/inter": "^5.3.0",
+    "@fontsource/jetbrains-mono": "^5.3.0",
+    "@fontsource/jost": "^5.3.0",
+    "@fontsource/kalam": "^5.3.0",
+    "@fontsource/lato": "^5.3.0",
+    "@fontsource/libre-baskerville": "^5.3.0",
+    "@fontsource/libre-franklin": "^5.3.0",
+    "@fontsource/merriweather": "^5.3.0",
+    "@fontsource/montserrat": "^5.3.0",
+    "@fontsource/mulish": "^5.3.0",
+    "@fontsource/noto-sans": "^5.3.0",
+    "@fontsource/noto-serif": "^5.3.0",
+    "@fontsource/nunito": "^5.3.0",
+    "@fontsource/nunito-sans": "^5.3.0",
+    "@fontsource/open-sans": "^5.3.0",
+    "@fontsource/oswald": "^5.3.0",
+    "@fontsource/pacifico": "^5.3.0",
+    "@fontsource/playfair-display": "^5.3.0",
+    "@fontsource/poppins": "^5.3.0",
+    "@fontsource/pt-sans": "^5.3.0",
+    "@fontsource/pt-sans-narrow": "^5.3.0",
+    "@fontsource/pt-serif": "^5.3.0",
+    "@fontsource/questrial": "^5.3.0",
+    "@fontsource/quicksand": "^5.3.0",
+    "@fontsource/raleway": "^5.3.0",
+    "@fontsource/roboto": "^5.3.0",
+    "@fontsource/roboto-condensed": "^5.3.0",
+    "@fontsource/roboto-slab": "^5.3.0",
+    "@fontsource/satisfy": "^5.3.0",
+    "@fontsource/source-sans-3": "^5.3.1",
+    "@fontsource/source-serif-4": "^5.3.1",
+    "@fontsource/spectral": "^5.3.0",
+    "@fontsource/tinos": "^5.3.0",
+    "@fontsource/ubuntu": "^5.3.0",
+    "@fontsource/work-sans": "^5.3.0",
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8",
+    "playwright-core": "^1.65.1",
+    "png2icons": "^2.0.1",
+    "resedit": "^2.0.3"
+  },
+  "productName": "Pyramid",
+  "build": {
+    "appId": "fr.pyramid.pdf",
+    "productName": "Pyramid",
+    "copyright": "© 2026 Pyramid",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "app/**/*"
+    ],
+    "asar": true,
+    "afterPack": "./afterPack.js",
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "shortcutName": "Pyramid",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerLanguages": [
+        "fr_FR"
+      ],
+      "language": "1036",
+      "artifactName": "Pyramid-Installation-${version}.exe",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false,
+      "installerHeaderIcon": "build/icon.ico",
+      "uninstallDisplayName": "Pyramid"
+    },
+    "portable": {
+      "artifactName": "Pyramid-Portable-${version}.exe"
+    },
+    "fileAssociations": [
+      {
+        "ext": "pdf",
+        "name": "Document PDF",
+        "description": "Document PDF",
+        "role": "Editor",
+        "icon": "build/icon.ico"
+      }
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Fefe-Kurylen",
+        "repo": "Pyramid",
+        "releaseType": "release"
+      }
+    ]
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.11"
+  }
+}
