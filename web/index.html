@@ -868,6 +868,7 @@ async function renderMain(){
   drawOverlayNow();
   if (S.editing) placeTA();
   if (S.tool === 'edit') ensureLines();
+  if (S.tool === 'edit' || S.tool === 'select') ensureImgs();
 }
 function bbox(a){
   if (a.t === 'tedit'){
@@ -882,6 +883,40 @@ function bbox(a){
     const r = a.s/2; return { x:x1-r, y:y1-r, w:x2-x1+2*r, h:y2-y1+2*r };
   }
   return { x:a.x, y:a.y, w:a.w, h:a.h };
+}
+/* ---------- Repères d’alignement pendant un déplacement ---------- */
+function moveBox(a){
+  if (a.t !== 'tedit') return bbox(a);
+  const g = teditGeom(a), ox = a.ox||0, oy = a.oy||0, tw = (a.para ? a.colW : (a.tw||a.ow));
+  const P = [[ox,g.top+oy],[ox+tw,g.top+oy],[ox+tw,g.bot+oy],[ox,g.bot+oy]].map(([u,v]) => teditLocalToPage(a,u,v));
+  const xs = P.map(q=>q[0]), ys = P.map(q=>q[1]), x = Math.min(...xs), y = Math.min(...ys);
+  return { x, y, w:Math.max(...xs)-x, h:Math.max(...ys)-y };
+}
+function alignRefs(p, a){
+  const R = [], { dw, dh } = dims(p);
+  R.push({ x:0, y:0, w:dw, h:dh, page:true });
+  for (const o of A(p)) if (o !== a && !(o.oimg && o.t === 'wo') && !(o.t === 'tedit' && !o.txt)) R.push(o.t === 'tedit' ? moveBox(o) : bbox(o));
+  if (S.lines && S.linesFor === lkey(p)) for (const L of S.lines){
+    if (Math.abs(L.ang) > 0.01 || (a.t === 'tedit' && a.L === L) || teditCovering(p, L)) continue;
+    R.push({ x:L.x, y:L.y - L.asc*L.fs, w:L.w, h:(L.asc - L.desc)*L.fs, base:L.y });
+  }
+  if (S.imgs && S.imgsFor === TI + '|' + lkey(p)) for (const o of S.imgs) if (!oimgDone(p, o)) R.push(o);
+  return R;
+}
+function snapGuides(p, a, b){
+  const tol = 6/S.scale, refs = alignRefs(p, a);
+  const mx = [b.x, b.x + b.w/2, b.x + b.w], my = [b.y, b.y + b.h/2, b.y + b.h];
+  let bx = null, by = null;
+  for (const r of refs){
+    const rx = r.page ? [r.w/2] : [r.x, r.x + r.w/2, r.x + r.w];
+    const ry = r.page ? [r.h/2] : [r.y, r.y + r.h/2, r.y + r.h].concat(r.base != null ? [r.base] : []);
+    for (const t of rx) for (const m of mx){ const d = t - m; if (Math.abs(d) <= tol && (!bx || Math.abs(d) < Math.abs(bx.d) - 1e-6)) bx = { d, t, refs:[r] }; else if (bx && Math.abs(t - bx.t) < 0.01 && Math.abs(d - bx.d) < 0.01) bx.refs.push(r); }
+    for (const t of ry) for (const m of my){ const d = t - m; if (Math.abs(d) <= tol && (!by || Math.abs(d) < Math.abs(by.d) - 1e-6)) by = { d, t, refs:[r] }; else if (by && Math.abs(t - by.t) < 0.01 && Math.abs(d - by.d) < 0.01) by.refs.push(r); }
+  }
+  const G = [], nb = { x:b.x + (bx ? bx.d : 0), y:b.y + (by ? by.d : 0), w:b.w, h:b.h };
+  if (bx){ let y1 = nb.y, y2 = nb.y + nb.h; for (const r of bx.refs){ y1 = Math.min(y1, r.y); y2 = Math.max(y2, r.y + r.h); } G.push({ v:bx.t, a:y1 - 4, b:y2 + 4, page:bx.refs.some(r => r.page) }); }
+  if (by){ let x1 = nb.x, x2 = nb.x + nb.w; for (const r of by.refs){ x1 = Math.min(x1, r.x); x2 = Math.max(x2, r.x + r.w); } G.push({ h:by.t, a:x1 - 4, b:x2 + 4, page:by.refs.some(r => r.page) }); }
+  return { dx: bx ? bx.d : 0, dy: by ? by.d : 0, G };
 }
 const fontStr = (a,k) => `${a.i?'italic ':''}${a.b?700:400} ${a.fs*k}px ${fontStackOf(a.f)}`;
 const mctx = document.createElement('canvas').getContext('2d');
@@ -986,7 +1021,27 @@ function drawOverlayNow(){
       ctx.restore();
     }
   }
+  if ((S.tool === 'edit' || S.tool === 'select') && S.imgs && S.imgsFor === TI + '|' + lkey(p)){
+    const rgb = getComputedStyle(document.documentElement).getPropertyValue('--accent-rgb').trim(), d = S.dpr;
+    for (const o of S.imgs){
+      if (oimgDone(p, o)) continue;
+      const hov = o === S.ihover;
+      ctx.save(); ctx.setLineDash(hov ? [] : [6*d, 4*d]);
+      if (hov){ ctx.fillStyle = `rgba(${rgb},.12)`; ctx.fillRect(o.x*k, o.y*k, o.w*k, o.h*k); }
+      ctx.strokeStyle = `rgba(${rgb},${hov ? .95 : .4})`; ctx.lineWidth = (hov ? 1.8 : 1)*d; ctx.strokeRect(o.x*k, o.y*k, o.w*k, o.h*k);
+      ctx.restore();
+    }
+  }
   drawFindHits(ctx, k);
+  if (S.guides && S.guides.length){
+    const d = S.dpr; ctx.save(); ctx.lineWidth = 1*d; ctx.strokeStyle = '#ec4899';
+    for (const g of S.guides){
+      ctx.setLineDash(g.page ? [5*d, 4*d] : []); ctx.beginPath();
+      if (g.v != null){ ctx.moveTo(g.v*k, g.a*k); ctx.lineTo(g.v*k, g.b*k); } else { ctx.moveTo(g.a*k, g.h*k); ctx.lineTo(g.b*k, g.h*k); }
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
   if (S.sel && S.sel !== ed && A(p).includes(S.sel)){
     const noHandle = S.sel.t === 'tedit';
     const b = bbox(S.sel), pad = 5*S.dpr, acc = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(), d = S.dpr;
@@ -1187,8 +1242,9 @@ function setTool(t){
   S.tool = t; if (!['select','text','edit'].includes(t)) S.sel = null;
   document.querySelectorAll('[data-tool]').forEach(b=>b.classList.toggle('on', b.dataset.tool===t));
   ov.style.cursor = t==='select' ? 'default' : (t==='text' || t==='edit') ? 'text' : 'crosshair';
-  S.hover = null;
+  S.hover = null; S.ihover = null;
   if (t === 'edit') ensureLines();
+  if (t === 'edit' || t === 'select') ensureImgs();
   drawOverlay(); syncProps();
 }
 let propHist = false;
@@ -1285,7 +1341,7 @@ let drag = null, lastTap = 0;
 function toPt(e){ const r = ov.getBoundingClientRect(); return { x:(e.clientX-r.left)/S.scale, y:(e.clientY-r.top)/S.scale }; }
 function hitTest(list, pt){
   const tol = 6/S.scale;
-  for (let i=list.length-1;i>=0;i--){ const b = bbox(list[i]); if (pt.x>=b.x-tol && pt.x<=b.x+b.w+tol && pt.y>=b.y-tol && pt.y<=b.y+b.h+tol) return list[i]; }
+  for (let i=list.length-1;i>=0;i--){ if (list[i].oimg && list[i].t === 'wo') continue; const b = bbox(list[i]); if (pt.x>=b.x-tol && pt.x<=b.x+b.w+tol && pt.y>=b.y-tol && pt.y<=b.y+b.h+tol) return list[i]; }
   return null;
 }
 const MOVABLE = ['select','text','edit'];
@@ -1342,6 +1398,16 @@ ov.addEventListener('pointerdown', e => {
       drawOverlay(); return;
     }
     if (S.sel){ S.sel = null; syncProps(); drawOverlay(); }
+    const oi = (t === 'edit' && lineAt(pt)) ? null : oimgAt(pt);
+    if (oi && t !== 'text'){
+      drag = { mode:'oimg', o:oi, start:pt, lastPt:pt, p };
+      grabImg(oi).then(a => {
+        if (!a || !drag || drag.o !== oi) return;
+        if (drag.ended){ drag = null; return; }
+        Object.assign(drag, { mode:'pend', a, pre:snap(), onClick:null });
+      }).catch(e => { console.warn(e); drag = null; toast('⚠️ Image impossible à extraire'); });
+      return;
+    }
     if (t === 'edit'){
       const L = lineAt(pt);
       if (L){ drag = { mode:'pendLine', L, start:pt, pre:snap(), p }; return; }
@@ -1365,6 +1431,11 @@ ov.addEventListener('pointermove', e => {
       const ph = toPt(e), ch = chromeHit(ph);
       ov.style.cursor = ch === 'del' ? 'pointer' : ch === 'rz' ? 'nwse-resize' : (MOVABLE.includes(S.tool) && hitTest(A(cur()), ph)) ? 'move' : toolCursor();
     }
+    if ((S.tool === 'edit' || S.tool === 'select') && e.pointerType === 'mouse' && !S.editing && cur()){
+      const ph = toPt(e), onLine = S.tool === 'edit' && lineAt(ph), oi = onLine || hitTest(A(cur()), ph) ? null : oimgAt(ph);
+      if (oi !== S.ihover){ S.ihover = oi; drawOverlay(); }
+      if (oi){ ov.style.cursor = 'move'; tipAt(`🖼️ Image du document<kbd>glisser = déplacer · clic puis × = supprimer</kbd>`, e.clientX, e.clientY); return; }
+    }
     if (S.tool === 'edit' && S.lines && e.pointerType === 'mouse' && !S.editing){
       const L = lineAt(toPt(e));
       if (L !== S.hover){ S.hover = L; drawOverlay(); }
@@ -1380,7 +1451,7 @@ ov.addEventListener('pointermove', e => {
     if (drag.mode === 'pendLine'){ startLineDrag(drag, pt); return; }
     drag.mode = drag.a.t === 'tedit' ? 'tmove' : 'move'; drag.orig = cloneA(drag.a); drag.moved = false;
   }
-  if (drag.mode === 'lwait'){ drag.lastPt = pt; return; }
+  if (drag.mode === 'lwait' || drag.mode === 'oimg'){ drag.lastPt = pt; return; }
   const a = drag.a, o = drag.orig;
   if (drag.mode === 'ink'){
     const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
@@ -1391,10 +1462,13 @@ ov.addEventListener('pointermove', e => {
     const dx = pt.x-drag.start.x, dy = pt.y-drag.start.y;
     if (!drag.moved){ if (Math.hypot(dx,dy)*S.scale < 3) return; drag.moved = true; pushHist(drag.pre); }
     applyTmove(drag, pt);
+    if (!e.altKey && Math.abs(a.ang||0) < 0.01){ const sg = snapGuides(cur(), a, moveBox(a)); if (sg.dx || sg.dy) applyTmove(drag, { x:pt.x + sg.dx, y:pt.y + sg.dy }); S.guides = sg.G; } else S.guides = null;
   } else if (drag.mode === 'move'){
     const dx = pt.x-drag.start.x, dy = pt.y-drag.start.y;
     if (!drag.moved){ if (Math.hypot(dx,dy)*S.scale < 3) return; drag.moved = true; pushHist(drag.pre); }
-    if (a.pts) a.pts = o.pts.map(([x,y])=>[x+dx,y+dy]); else { a.x=o.x+dx; a.y=o.y+dy; }
+    let sx = 0, sy = 0;
+    if (!e.altKey){ const b0 = bbox(o), sg = snapGuides(cur(), a, { x:b0.x + dx, y:b0.y + dy, w:b0.w, h:b0.h }); sx = sg.dx; sy = sg.dy; S.guides = sg.G; } else S.guides = null;
+    if (a.pts) a.pts = o.pts.map(([x,y])=>[x+dx+sx,y+dy+sy]); else { a.x=o.x+dx+sx; a.y=o.y+dy+sy; }
   } else if (drag.mode === 'resize'){
     if (!drag.moved){ drag.moved = true; pushHist(drag.pre); }
     const b0 = drag.b0, dx = pt.x-drag.start.x, dy = pt.y-drag.start.y, min = 6;
@@ -1408,10 +1482,12 @@ ov.addEventListener('pointermove', e => {
 const endDrag = () => {
   if (!drag) return;
   const d = drag; drag = null;
+  if (S.guides){ S.guides = null; drawOverlay(); }
   const p = cur();
   if (d.mode === 'pend'){ if (d.onClick) d.onClick(); return; }
   if (d.mode === 'pendLine'){ startTedit(d.L); return; }
   if (d.mode === 'lwait'){ d.ended = true; return; }
+  if (d.mode === 'oimg'){ d.ended = true; drag = d; return; }
   if (d.mode==='box'){ if (d.a.w*S.scale<4 || d.a.h*S.scale<4){ A(p).splice(A(p).indexOf(d.a),1); } else pushHist(d.pre); }
   if (d.mode==='ink') pushHist(d.pre);
   if ((d.mode==='resize' && d.a.t==='text') || ((d.mode==='tmove' || d.mode==='move') && d.moved)) syncProps();
@@ -1653,6 +1729,76 @@ function ensureLines(){
   const k = lkey(p);
   if (S.lines && S.linesFor === k) return;
   getLines(p).then(L => { if (lkey(cur()) === k){ S.lines = L; S.linesFor = k; drawOverlay(); } }).catch(e => { console.warn(e); toast('⚠️ Analyse du texte impossible sur cette page'); });
+}
+/* ---------- Images d’origine du PDF (détectées pour être déplacées ou supprimées) ---------- */
+const oimgCache = new Map();
+async function getImgs(p){
+  const key = p.d + ':' + p.i + ':' + rotOf(p);
+  if (oimgCache.has(key)) return oimgCache.get(key);
+  const pr = (async () => {
+    const pg = await S.docs[p.d].pdf.getPage(p.i+1), ol = await pg.getOperatorList();
+    const vp = pg.getViewport({ scale:1, rotation:rotOf(p) }), O = pdfjsLib.OPS, { dw, dh } = dims(p);
+    const mul = (m, n) => [m[0]*n[0]+m[2]*n[1], m[1]*n[0]+m[3]*n[1], m[0]*n[2]+m[2]*n[3], m[1]*n[2]+m[3]*n[3], m[0]*n[4]+m[2]*n[5]+m[4], m[1]*n[4]+m[3]*n[5]+m[5]];
+    let ctm = [1,0,0,1,0,0]; const st = [], out = [];
+    const add = (m, n) => {
+      const pts = [[0,0],[1,0],[0,1],[1,1]].map(([u,v]) => vp.convertToViewportPoint(m[0]*u+m[2]*v+m[4], m[1]*u+m[3]*v+m[5]));
+      const xs = pts.map(q => q[0]), ys = pts.map(q => q[1]);
+      const x = Math.max(0, Math.min(...xs)), y = Math.max(0, Math.min(...ys)), w = Math.min(dw, Math.max(...xs)) - x, h = Math.min(dh, Math.max(...ys)) - y;
+      if (w < 6 || h < 6 || w*h > dw*dh*0.85) return;
+      out.push({ k: p.id + '#' + n, x, y, w, h });
+    };
+    for (let i = 0, n = 0; i < ol.fnArray.length; i++){
+      const f = ol.fnArray[i], a = ol.argsArray[i];
+      if (f === O.save) st.push(ctm);
+      else if (f === O.restore) ctm = st.pop() || [1,0,0,1,0,0];
+      else if (f === O.transform) ctm = mul(ctm, a);
+      else if (f === O.paintFormXObjectBegin){ st.push(ctm); if (a && Array.isArray(a[0]) && a[0].length === 6) ctm = mul(ctm, a[0]); }
+      else if (f === O.paintFormXObjectEnd) ctm = st.pop() || [1,0,0,1,0,0];
+      else if (f === O.paintImageXObject || f === O.paintInlineImageXObject || f === O.paintImageMaskXObject || f === O.paintJpegXObject) add(ctm, n++);
+    }
+    return out;
+  })();
+  oimgCache.set(key, pr); pr.catch(() => oimgCache.delete(key));
+  return pr;
+}
+function ensureImgs(){
+  const p = cur(); if (!p) return;
+  const k = TI + '|' + lkey(p);
+  if (S.imgsFor === k) return;
+  S.imgs = null; S.imgsFor = k;
+  getImgs(p).then(L => { if (S.imgsFor === k){ S.imgs = L; drawOverlay(); } }).catch(e => console.warn(e));
+}
+const oimgDone = (p, o) => A(p).some(a => a.oimg === o.k);
+function oimgAt(pt){
+  const p = cur(); if (!p || !S.imgs || S.imgsFor !== TI + '|' + lkey(p)) return null;
+  let best = null;
+  for (const o of S.imgs) if (!oimgDone(p, o) && pt.x >= o.x && pt.x <= o.x + o.w && pt.y >= o.y && pt.y <= o.y + o.h && (!best || o.w*o.h < best.w*best.h)) best = o;
+  return best;
+}
+async function liftImg(o){
+  const p = cur(), hi = await hiRes(p), K = hi.K;
+  const X = Math.floor(o.x*K), Y = Math.floor(o.y*K), W = Math.max(1, Math.ceil(o.w*K)), H = Math.max(1, Math.ceil(o.h*K));
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  c.getContext('2d').drawImage(hi.c, X, Y, W, H, 0, 0, W, H);
+  // couleur du fond autour de l’image (médiane d’un anneau de pixels juste à l’extérieur)
+  const g = hi.c.getContext('2d', { willReadFrequently:true }), ring = [];
+  const take = (x, y, w, h) => { x = Math.max(0, Math.round(x)); y = Math.max(0, Math.round(y)); w = Math.min(hi.c.width - x, Math.round(w)); h = Math.min(hi.c.height - y, Math.round(h)); if (w < 1 || h < 1) return; const d = g.getImageData(x, y, w, h).data; for (let i = 0; i < d.length; i += 16) ring.push((d[i]<<16)|(d[i+1]<<8)|d[i+2]); };
+  const m = Math.max(2, Math.round(2*K));
+  take(X - m, Y - m, W + 2*m, m); take(X - m, Y + H, W + 2*m, m); take(X - m, Y, m, H); take(X + W, Y, m, H);
+  let bg = '#ffffff';
+  if (ring.length){ const cnt = new Map(); for (const v of ring){ const q = v & 0xF0F0F0; cnt.set(q, (cnt.get(q)||0) + 1); } let bq = 0, bn = -1; for (const [q, n] of cnt) if (n > bn){ bn = n; bq = q; } const sel = ring.filter(v => (v & 0xF0F0F0) === bq); const v = sel[sel.length >> 1]; bg = '#' + v.toString(16).padStart(6, '0'); }
+  return { src: c.toDataURL('image/png'), bg };
+}
+async function grabImg(o, pt, pointerDown){
+  const p = cur(), tab = TI;
+  const r = await liftImg(o);
+  if (TI !== tab || cur() !== p || oimgDone(p, o)) return null;
+  commit();
+  A(p).push({ t:'wo', c:r.bg, x:o.x, y:o.y, w:o.w, h:o.h, oimg:o.k });
+  const a = { t:'img', src:r.src, x:o.x, y:o.y, w:o.w, h:o.h, oimg:o.k };
+  A(p).push(a); imgEl(r.src); S.sel = a; S.ihover = null;
+  drawOverlay(); refreshThumb(p); syncProps();
+  return a;
 }
 function lineAt(pt){
   if (!S.lines || S.linesFor !== lkey(cur())) return null;

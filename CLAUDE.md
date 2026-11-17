@@ -39,7 +39,7 @@ Installation actuelle sur le PC : `C:\Users\felix\AppData\Local\Programs\Pyramid
 ## 🔄 Mises à jour
 - Les mises à jour passeront par le **Microsoft Store** (en préparation : compte développeur, réservation du nom « Pyramid PDF », identifiants du paquet à recevoir de Félix, paquet MSIX à fabriquer sur Windows).
 - L'ancien système electron-updater / GitHub Releases a été retiré (v1.2.0). GitHub sert uniquement de stockage.
-- Version actuelle : 1.2.1. Le dossier de données reste `%APPDATA%\Pyramid` (`app.setPath('userData', …)` dans main.js) pour garder les réglages.
+- Version actuelle : 1.2.2. Le dossier de données reste `%APPDATA%\Pyramid` (`app.setPath('userData', …)` dans main.js) pour garder les réglages.
 
 ## 🧠 Fonctionnement clé
 - **Modes** : `MODE = 'read' | 'edit'` (classe `reading` sur `<html>`). Le PDF s'ouvre en **lecteur** (pages continues,
@@ -61,6 +61,8 @@ Installation actuelle sur le PC : `C:\Users\felix\AppData\Local\Programs\Pyramid
 - **Disposition Pro** : `placeRail()` déplace `#rbar`, `#tools` et `#pagebar` dans la barre d'icônes verticale `#rail` à gauche (bulles d'aide à droite).
 - **Miniatures** : largeur réglable à la souris via `#sideGrip` (double-clic = défaut), mémorisée dans localStorage `pyramid-sidew` ; résolution des miniatures adaptée à la largeur (`thumbPx`).
 - **Signature** : bouton `#rSign` dans la barre du mode lecture (à côté de Modifier), plus dans les outils du mode Modifier ; `placeInReader()` affiche un aperçu qui suit la souris et pose la signature à l'endroit cliqué, sans quitter la lecture (Échap pour annuler).
+- **Images d'origine** : `getImgs(p)` lit la liste d'opérations pdf.js (save/restore/transform/paintImageXObject…) pour trouver les images de la page (hors images > 85 % de la page, ex. scans) ; contours en pointillés en modes Modifier/Sélection, survol surligné. Au clic ou glisser, `grabImg()` découpe l'image sur le rendu haute résolution, pose un cache `wo` de la couleur du fond (`oimg` = clé de l'image) et une annotation `img` déplaçable / redimensionnable / supprimable (Suppr ou ×). Les caches `wo` liés à une image ne sont pas sélectionnables.
+- **Repères d'alignement** : pendant un déplacement (`move`, `tmove`), `snapGuides()` compare les bords et centres de l'élément avec les autres éléments, les lignes de texte (y compris la ligne de base), les images et le centre de la page ; aimantation à 6 px, lignes roses (pointillées pour le centre de page), Alt pour désactiver.
 - **Molette** : en lecture elle fait défiler (Ctrl + molette = zoom) ; en mode Modifier elle zoome (ou défile selon le réglage).
 - **Débogage** : variable d'environnement `PYR_DEBUG=1` → `window.__pyr` (S, getLines, cur, TABS, refineFont, hiRes…).
 
