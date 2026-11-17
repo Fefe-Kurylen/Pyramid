@@ -101,7 +101,8 @@ ipcMain.handle('print', async (e, pages, o) => {
   const [pw, ph] = PAPER_MM[paper], W = land ? ph : pw, H = land ? pw : ph;
   const per = [1, 2, 4].includes(o.per) ? o.per : 1, actual = o.fit === 'actual' && per === 1;
   const cols = per === 4 ? 2 : (per === 2 ? (land ? 2 : 1) : 1), rows = per / cols;
-  const pad = actual ? 0 : (per === 1 ? 4 : 6), gap = per === 1 ? 0 : 4;
+  // 1 page par feuille : taille exacte (ou mise à l'échelle de la feuille), sans marge ajoutée
+  const pad = per === 1 ? 0 : 5, gap = per === 1 ? 0 : 4;
   const ok = pages.filter(p => p && /^data:image\/(jpeg|png);base64,/.test(p.src));
   if (!ok.length) return { ok: false, err: 'aucune page' };
   let body = '';
@@ -122,12 +123,11 @@ html,body{margin:0;padding:0;background:#fff}
   const w = new BrowserWindow({ show: false, webPreferences: { javascript: false, sandbox: true } });
   try {
     await w.loadFile(f);
-    const dpi = Math.max(72, Math.min(600, o.dpi | 0 || 150));
     const opts = {
       silent: true, printBackground: true, color: o.color !== false, landscape: land, pageSize: paper,
       margins: { marginType: 'none' }, copies: Math.max(1, Math.min(99, o.copies | 0 || 1)), collate: o.collate !== false,
       duplexMode: ['simplex', 'shortEdge', 'longEdge'].includes(o.duplexMode) ? o.duplexMode : 'simplex',
-      dpi: { horizontal: dpi, vertical: dpi }
+      scaleFactor: 100
     };
     if (o.deviceName) opts.deviceName = String(o.deviceName);
     return await new Promise(res => w.webContents.print(opts, (success, err) => res({ ok: !!success, err: success ? '' : String(err || '') })));

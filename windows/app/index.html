@@ -2988,7 +2988,7 @@ async function printDoc(){
       sheetsEl.style.filter = PRINT.color === 'gray' ? 'grayscale(1)' : '';
       for (let s0 = 0; s0 < shown; s0++){
         const sh = document.createElement('div'); sh.className = 'sheet'; sh.style.aspectRatio = `${W}/${H}`;
-        sh.style.gridTemplateColumns = `repeat(${cols},minmax(0,1fr))`; sh.style.gridTemplateRows = `repeat(${rows},minmax(0,1fr))`; if (PRINT.fit === 'actual' && per === 1) sh.style.padding = '0';
+        sh.style.gridTemplateColumns = `repeat(${cols},minmax(0,1fr))`; sh.style.gridTemplateRows = `repeat(${rows},minmax(0,1fr))`; if (per === 1) sh.style.padding = '0';
         const cssW = Math.min(sheetsEl.clientWidth - 40, 560) / cols;
         for (const i of idx.slice(s0*per, s0*per + per)){
           const cell = document.createElement('div'); cell.className = 'cell';

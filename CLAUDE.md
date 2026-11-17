@@ -60,7 +60,7 @@ Installation actuelle sur le PC : `C:\Users\felix\AppData\Local\Programs\Pyramid
 - Les mises à jour passent par le **Microsoft Store** (compte développeur de Félix créé, nom « Pyramid PDF » réservé). **Version 1.3.0 soumise le 17/11/2026** (fiche en français, runFullTrust justifié, politique de confidentialité = URL GitHub de PRIVACY.md) — en certification. Identité Store dans `build.appx` de `windows/package.json` : `Kurylen.PyramidPDF`, `CN=B85CD3FF-A422-425E-9A54-A6E74180E94E`, éditeur `Kurylen` ; logos dans `windows/build/appx/`.
 - Nouvelle version : augmenter `version` dans `windows/package.json`, pousser sur GitHub, récupérer le `.appx` dans les artifacts du workflow `windows-store.yml`, puis Partner Center → nouvelle soumission → Packages.
 - L'ancien système electron-updater / GitHub Releases a été retiré (v1.2.0). GitHub sert uniquement de stockage.
-- Version actuelle : 1.3.0 (Windows, Mac, iPhone, Android). Le dossier de données reste `%APPDATA%\Pyramid` (`app.setPath('userData', …)` dans main.js) pour garder les réglages.
+- Version actuelle : 1.3.1 sur Windows (correctif d'impression ; Store encore en 1.3.0), 1.3.0 sur Mac, iPhone, Android. Le dossier de données reste `%APPDATA%\Pyramid` (`app.setPath('userData', …)` dans main.js) pour garder les réglages.
 
 ## 🧠 Fonctionnement clé
 - **Modes** : `MODE = 'read' | 'edit'` (classe `reading` sur `<html>`). Le PDF s'ouvre en **lecteur** (pages continues,
@@ -76,7 +76,7 @@ Installation actuelle sur le PC : `C:\Users\felix\AppData\Local\Programs\Pyramid
   (node-forge) + horodatage RFC 3161 (FreeTSA / DigiCert / Sectigo via IPC `tsa`).
 - **Impression** : `printDoc()` ouvre une fenêtre avec aperçu des feuilles + réglages (imprimante, copies, assembler, pages,
   couleur/N&B, qualité 100/150/300 dpi, A4/A3/A5/Lettre, orientation, 1/2/4 pages par feuille, ajuster/taille réelle,
-  recto verso). Réglages mémorisés dans localStorage `pyramid-print`. Impression silencieuse via IPC `print(pages, options)`. Aperçu net (canvas rendus selon la taille affichée × devicePixelRatio).
+  recto verso). Réglages mémorisés dans localStorage `pyramid-print`. Impression silencieuse via IPC `print(pages, options)` : 1 page par feuille = taille exacte sans marge ajoutée, pas d'option `dpi` (elle réduisait l'impression), `scaleFactor: 100` ; test `tests/e15.js` (comparaison avec l'original). Aperçu net (canvas rendus selon la taille affichée × devicePixelRatio).
 - **Réglages** (`SET`, localStorage `pyramid-settings`) : theme, accent, layout, density, icons (s/m/l/xl → `--uiz`),
   radius, thumbs, wheel. Défauts : Graphite, accent `#c8703f` (orange doux), Classique, Confortable.
 - **Disposition Pro** : `placeRail()` déplace `#rbar`, `#tools` et `#pagebar` dans la barre d'icônes verticale `#rail` à gauche (bulles d'aide à droite).
