@@ -141,8 +141,69 @@ ipcMain.handle('tsa', async (e, url, body) => {
   return new Uint8Array(await r.arrayBuffer());
 });
 ipcMain.handle('app-version', e => fromApp(e) ? app.getVersion() : '');
+
+/* ---------- Mises à jour (GitHub : Fefe-Kurylen/Pyramid) ----------
+   Version installée (Setup) : téléchargement en arrière-plan, puis bouton « Mettre à jour » (redémarre et installe).
+   Version portable et Mac : la nouvelle version est signalée, le bouton ouvre la page de téléchargement.
+   Version Microsoft Store : rien ici, c'est le Store qui met à jour. */
+const RELEASES = 'https://github.com/Fefe-Kurylen/Pyramid/releases/latest';
+const UPD = { mode: 'off', status: 'idle', version: null, progress: 0, url: RELEASES, at: 0 };
+let updater = null;
+const sendUpd = () => { try { if (win && ready) win.webContents.send('update', { ...UPD }); } catch {} };
+const setUpd = o => {
+  Object.assign(UPD, o); sendUpd();
+  // Essai automatique de la chaîne de mise à jour (workflow GitHub) : état écrit dans un fichier, installation sans clic
+  if (process.env.PYR_UPDATE_LOG) { try { fs.writeFileSync(process.env.PYR_UPDATE_LOG, JSON.stringify(UPD)); } catch {} }
+  if (process.env.PYR_UPDATE_AUTOINSTALL && UPD.status === 'ready' && updater) setTimeout(() => updater.quitAndInstall(true, true), 1500);
+};
+const newer = (a, b) => { const x = String(a).split('.').map(n => parseInt(n) || 0), y = String(b).split('.').map(n => parseInt(n) || 0);
+  for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; };
+function initUpdater(){
+  if (!app.isPackaged && !process.env.PYR_UPDATE_TEST) return;
+  if (process.windowsStore) return;                                   // Microsoft Store
+  if (process.platform === 'win32' && !process.env.PORTABLE_EXECUTABLE_DIR) {
+    try { updater = require('electron-updater').autoUpdater; } catch { updater = null; }
+  }
+  UPD.mode = updater ? 'auto' : 'manual';
+  if (updater) {
+    updater.autoDownload = true; updater.autoInstallOnAppQuit = true; updater.allowPrerelease = false; updater.logger = null;
+    updater.on('checking-for-update', () => { if (UPD.status !== 'ready' && UPD.status !== 'downloading') setUpd({ status: 'checking' }); });
+    updater.on('update-not-available', () => setUpd({ status: 'latest' }));
+    updater.on('update-available', i => setUpd({ status: 'downloading', version: i && i.version, progress: 0 }));
+    updater.on('download-progress', p => setUpd({ status: 'downloading', progress: Math.round(p.percent || 0) }));
+    updater.on('update-downloaded', i => setUpd({ status: 'ready', version: i && i.version, progress: 100 }));
+    updater.on('error', () => { if (UPD.status !== 'ready') setUpd({ status: 'error' }); });
+  }
+  setTimeout(checkUpdate, 8000);
+  setInterval(checkUpdate, 30 * 60 * 1000);
+}
+async function checkUpdate(){
+  if (UPD.mode === 'off' || UPD.status === 'ready' || UPD.status === 'downloading') return { ...UPD };
+  UPD.at = Date.now();
+  if (updater) { try { await updater.checkForUpdates(); } catch { setUpd({ status: 'error' }); } return { ...UPD }; }
+  // Portable / Mac : dernière publication GitHub
+  try {
+    setUpd({ status: 'checking' });
+    const r = await net.fetch('https://api.github.com/repos/Fefe-Kurylen/Pyramid/releases/latest', { headers: { 'User-Agent': 'Pyramid-PDF', Accept: 'application/vnd.github+json' } });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const j = await r.json(); const v = String(j.tag_name || '').replace(/^v/, '');
+    if (v && newer(v, app.getVersion())) setUpd({ status: 'available', version: v, url: j.html_url || RELEASES });
+    else setUpd({ status: 'latest' });
+  } catch { setUpd({ status: 'error' }); }
+  return { ...UPD };
+}
+ipcMain.handle('update-state', e => fromApp(e) ? { ...UPD, current: app.getVersion() } : null);
+ipcMain.handle('update-check', async e => fromApp(e) ? { ...(await checkUpdate()), current: app.getVersion() } : null);
+ipcMain.handle('update-install', e => {
+  if (!fromApp(e)) return false;
+  if (UPD.status === 'ready' && updater) { setImmediate(() => updater.quitAndInstall(false, true)); return true; }
+  if (UPD.status === 'available') { shell.openExternal(UPD.url || RELEASES); return true; }
+  return false;
+});
+// Retour sur la fenêtre : nouvelle recherche si la dernière date d'au moins 10 minutes
+app.on('browser-window-focus', () => { if (UPD.mode !== 'off' && Date.now() - UPD.at > 10 * 60 * 1000) checkUpdate(); });
 ipcMain.on('ready', e => {
-  if (!fromApp(e)) return; ready = true; const f = pending.splice(0); sendFiles(f); });
+  if (!fromApp(e)) return; ready = true; const f = pending.splice(0); sendFiles(f); sendUpd(); });
 
 // Mac : fichiers ouverts depuis le Finder (double-clic, glisser sur l’icône)
 app.on('open-file', (e, f) => { e.preventDefault(); if (fs.existsSync(f)) sendFiles([f]); });
@@ -154,7 +215,7 @@ else {
     win.focus();
     sendFiles(fileArgs(argv.map((a, i) => i === 0 ? a : path.resolve(cwd || process.cwd(), a))));
   });
-  app.whenReady().then(() => { createWindow(); sendFiles(fileArgs(process.argv)); });
+  app.whenReady().then(() => { createWindow(); sendFiles(fileArgs(process.argv)); initUpdater(); });
   app.on('window-all-closed', () => app.quit());
   app.on('activate', () => { if (!win) createWindow(); });
 }

@@ -349,6 +349,11 @@ html:not(.reading) #reader,html:not(.reading) #rbar{display:none!important}
 .prt .opt{padding:6px 10px}
 .prt .ps .seg button{min-width:0;font-size:12.5px;height:30px}
 .prow{display:flex;gap:12px;align-items:flex-start}
+#updBtn{display:none;align-items:center;gap:7px;height:32px;padding:0 13px 0 11px;margin-right:4px;border-radius:999px;background:var(--accent);color:#fff;font-weight:600;font-size:12.5px;white-space:nowrap;font-variant-numeric:tabular-nums;transition:filter .15s}
+#updBtn.on{display:inline-flex}
+#updBtn:hover{filter:brightness(1.08)}
+#updBtn.dl{background:var(--panel2);color:var(--text);border:1px solid var(--line2)}
+#updBtn svg{width:15px;height:15px}
 .updrow{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .updrow [data-uver]{font-weight:600;font-variant-numeric:tabular-nums}
 @media (max-width:760px){ .prt{flex-direction:column;height:auto} .prt .ps{width:auto;border-left:0} .prt .pvs{max-height:40vh} }
@@ -397,6 +402,7 @@ html:not(.reading) #reader,html:not(.reading) #rbar{display:none!important}
   <button class="ibtn" id="undo" title="Annuler (Ctrl+Z)" data-ic="undo" disabled></button>
   <button class="ibtn" id="redo" title="Rétablir (Ctrl+Y)" data-ic="redo" disabled></button>
   <div class="hsep"></div>
+  <button id="updBtn" title="Mise à jour de Pyramid PDF"></button>
   <button class="ibtn" id="setBtn" title="Personnaliser Pyramid PDF" data-ic="settings"></button>
   <button class="ibtn heart" id="heartBtn" title="Soutenir Pyramid PDF" data-ic="heart"></button>
   <div class="hsep"></div>
@@ -2766,12 +2772,33 @@ function openSettings(){
     <div class="setrow"><span class="lbl">🔍 Taille de l’interface (icônes et barres d’outils)</span>${seg('icons',[['s','Petite'],['m','Moyenne'],['l','Grande'],['xl','Très grande']])}</div>
     <div class="setrow"><span class="lbl">⬛ Coins</span>${seg('radius',[['carre','Carrés'],['doux','Doux'],['rond','Ronds']])}</div>
     <div class="setrow"><span class="lbl">🖱️ Molette en mode Modifier</span>${seg('wheel',[['zoom','Zoomer'],['scroll','Défiler']])}<div class="note">En lecture, la molette fait toujours défiler (Ctrl + molette pour zoomer). En mode Modifier : « Zoomer » → Maj + molette pour défiler ; « Défiler » → Ctrl + molette pour zoomer.</div></div>
-    ${window.native && window.native.version ? `<div class="setrow"><span class="lbl">ℹ️ À propos</span><div class="updrow"><span data-uver>Pyramid PDF</span></div></div>` : ''}
+    ${window.native && window.native.version ? `<div class="setrow"><span class="lbl">${window.native.checkUpdate ? '🔄 Mises à jour' : 'ℹ️ À propos'}</span><div class="updrow"><span data-uver>Pyramid PDF</span>${window.native.checkUpdate ? '<button class="btn ghost" data-upd>Rechercher maintenant</button>' : ''}</div><div class="note" data-unote></div></div>` : ''}
     <div class="row"><button class="btn ghost" data-reset>Réinitialiser</button><button class="btn primary" data-x data-ic="check">Terminé</button></div>`,
   (card, close) => {
     card.classList.add('wide');
     const uv = card.querySelector('[data-uver]');
     if (uv) window.native.version().then(v => { uv.textContent = 'Pyramid PDF · version ' + v; }).catch(() => {});
+    const ub = card.querySelector('[data-upd]');
+    if (ub){
+      const paint = () => {
+        const u = UPD, note = card.querySelector('[data-unote]');
+        ub.disabled = u.status === 'checking' || u.status === 'downloading';
+        ub.textContent = u.status === 'ready' ? `Redémarrer et installer la ${u.version}` : u.status === 'available' ? `Télécharger la ${u.version}`
+          : u.status === 'checking' ? 'Recherche…' : u.status === 'downloading' ? `Téléchargement de la ${u.version}… ${u.progress || 0} %` : 'Rechercher maintenant';
+        note.textContent = u.mode === 'off' ? 'Les mises à jour arrivent par le Microsoft Store.'
+          : u.status === 'latest' ? '✅ Pyramid PDF est à jour.' : u.status === 'error' ? '⚠️ Vérification impossible (connexion internet ?).'
+          : u.mode === 'auto' ? 'Les nouvelles versions se téléchargent toutes seules ; le bouton « Mise à jour » apparaît en haut quand elles sont prêtes.'
+          : 'Les nouvelles versions sont signalées par le bouton « Mise à jour » en haut.';
+        if (u.mode === 'off') ub.hidden = true;
+      };
+      updPaint = paint; paint();
+      ub.onclick = async () => {
+        if (UPD.status === 'ready' || UPD.status === 'available') return window.native.installUpdate();
+        UPD.status = 'checking'; paint();
+        const r = await window.native.checkUpdate().catch(() => null);
+        if (r) onUpd(r, true); else { UPD.status = 'error'; paint(); }
+      };
+    }
     const refresh = () => {
       card.querySelectorAll('[data-th]').forEach(b => b.classList.toggle('on', b.dataset.th === SET.theme));
       card.querySelectorAll('[data-a]').forEach(b => b.classList.toggle('on', b.dataset.a === SET.accent.toLowerCase()));
@@ -3431,7 +3458,30 @@ window.addEventListener('beforeunload', e => { saveTab(); if (TABS.some(t => t.d
 applySettings(false);
 renderTabs();
 if (/[?&]debug\b/.test(location.search)) window.__pyr = { S, getLines, cur, TABS, switchTab, embWorks, goto, embOk, startPara, openFind, zoomTo, bbox, refineFont, hiRes, sampleColorsHi };
+/* ================= Mises à jour (bouton en haut) ================= */
+let UPD = { mode:'off', status:'idle' }, updPaint = null;
+function onUpd(u, quiet){
+  if (!u) return;
+  const before = UPD.status; UPD = u;
+  const b = $('#updBtn'); if (!b) return;
+  const show = u.status === 'ready' || u.status === 'available' || (u.status === 'downloading' && u.version);
+  b.classList.toggle('on', !!show); b.classList.toggle('dl', u.status === 'downloading');
+  b.innerHTML = u.status === 'ready' ? `${ic('download')}<span>Mettre à jour (${esc(u.version || '')})</span>`
+    : u.status === 'available' ? `${ic('download')}<span>Version ${esc(u.version || '')} disponible</span>`
+    : `<span>Mise à jour ${esc(u.version || '')} · ${u.progress || 0} %</span>`;
+  b.title = u.status === 'ready' ? 'Redémarrer Pyramid PDF et installer la nouvelle version'
+    : u.status === 'available' ? 'Ouvrir la page de téléchargement' : 'Téléchargement de la nouvelle version en cours';
+  if (!quiet && before !== u.status && u.status === 'ready') toast(`🎉 Pyramid PDF ${u.version} est prête : clique sur « Mettre à jour »`);
+  if (!quiet && before !== u.status && u.status === 'available') toast(`🎉 Pyramid PDF ${u.version} est disponible`);
+  if (updPaint && document.body.contains(document.querySelector('[data-upd]'))) updPaint(); else updPaint = null;
+}
+$('#updBtn').onclick = () => {
+  if (UPD.status === 'downloading') return toast(`⬇️ Téléchargement de la ${UPD.version} : ${UPD.progress || 0} %`);
+  window.native && window.native.installUpdate && window.native.installUpdate();
+};
+
 if (window.native){
+  if (window.native.onUpdate){ window.native.onUpdate(u => onUpd(u)); window.native.updateState().then(u => onUpd(u, true)).catch(() => {}); }
   const plat = String(window.native.platform || '');
   document.documentElement.classList.add('native', 'plat-' + plat, /^(ios|android)$/.test(plat) ? 'mobile' : 'desk');
   applySettings(false);

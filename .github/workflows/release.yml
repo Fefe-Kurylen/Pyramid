@@ -1,0 +1,106 @@
+# Publie chaque nouvelle version de Pyramid PDF sur GitHub (onglet Releases) :
+# dès que la version de windows/package.json change, l'installateur Windows, la version portable
+# et le fichier latest.yml sont fabriqués puis publiés sous l'étiquette v<version>.
+# Les applis installées voient alors la nouvelle version et affichent le bouton « Mise à jour ».
+name: Publication des mises à jour
+on:
+  push:
+    branches: [main]
+    paths: ['windows/**', 'web/**', '.github/workflows/release.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: publication
+  cancel-in-progress: false
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: windows
+        shell: pwsh
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Version déjà publiée ?
+        id: v
+        run: |
+          $v = node -p "require('./package.json').version"
+          "version=$v" >> $env:GITHUB_OUTPUT
+          gh release view "v$v" -R "${{ github.repository }}" *> $null
+          if ($LASTEXITCODE -eq 0) { "deja=1" >> $env:GITHUB_OUTPUT; "La version $v est déjà publiée : rien à faire." }
+          else { "deja=0" >> $env:GITHUB_OUTPUT; "Nouvelle version à publier : $v" }
+          exit 0
+      - uses: actions/setup-node@v4
+        if: steps.v.outputs.deja == '0'
+        with:
+          node-version: 22
+      - if: steps.v.outputs.deja == '0'
+        run: npm ci
+      - name: Fabrication et publication (Setup + portable + latest.yml)
+        if: steps.v.outputs.deja == '0'
+        run: npx electron-builder --win nsis portable --x64 --publish always
+      - name: Vérification de la publication
+        if: steps.v.outputs.deja == '0'
+        run: |
+          $v = "${{ steps.v.outputs.version }}"
+          $assets = gh release view "v$v" -R "${{ github.repository }}" --json assets,isDraft -q '.isDraft, (.assets[].name)'
+          $assets
+          if ($assets -notcontains 'latest.yml') { throw "latest.yml absent : les applis ne verraient pas la mise à jour" }
+          if ($assets -notcontains "Pyramid-PDF-Installation-$v.exe") { throw "Installateur absent" }
+          if ($assets[0] -ne 'false') { throw "La publication est restée en brouillon" }
+          "✅ Pyramid PDF $v publiée"
+      - uses: actions/upload-artifact@v4
+        if: steps.v.outputs.deja == '0'
+        with:
+          name: pyramid-pdf-windows
+          path: |
+            windows/dist/*.exe
+            windows/dist/latest.yml
+          if-no-files-found: warn
+
+  # Essai réel : une ancienne version (0.0.1) est installée, elle doit trouver la version publiée,
+  # la télécharger et s'installer par-dessus, exactement comme sur le PC d'un utilisateur.
+  essai-mise-a-jour:
+    needs: windows
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: windows
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Fabrication d'une ancienne version 0.0.1
+        run: |
+          node -e "const f='package.json';const j=require('./'+f);j.version='0.0.1';require('fs').writeFileSync(f,JSON.stringify(j,null,2))"
+          npx electron-builder --win nsis --x64 --publish never
+      - name: Installation, recherche, téléchargement et installation de la mise à jour
+        run: |
+          $setup = Get-ChildItem dist\Pyramid-PDF-Installation-0.0.1.exe
+          Start-Process $setup.FullName -ArgumentList '/S' -Wait
+          $exe = Join-Path $env:LOCALAPPDATA 'Programs\Pyramid PDF\Pyramid PDF.exe'
+          if (-not (Test-Path $exe)) { throw "Installation 0.0.1 échouée" }
+          "Installée : $((Get-Item $exe).VersionInfo.ProductVersion)"
+          $log = Join-Path $env:TEMP 'pyramid-maj.json'
+          $env:PYR_UPDATE_LOG = $log; $env:PYR_UPDATE_AUTOINSTALL = '1'
+          Start-Process $exe
+          $etat = $null
+          for ($i = 0; $i -lt 60; $i++) {
+            Start-Sleep -Seconds 5
+            if (Test-Path $log) { $etat = Get-Content $log -Raw | ConvertFrom-Json; "→ $($etat.status) $($etat.version) $($etat.progress) %" }
+            if ($etat -and $etat.status -eq 'ready') { break }
+          }
+          if (-not $etat -or $etat.status -ne 'ready') { throw "La mise à jour n'a pas été trouvée ou téléchargée" }
+          "✅ Bouton « Mettre à jour » : la version $($etat.version) est prête"
+          Start-Sleep -Seconds 60
+          Get-Process | Where-Object { $_.Path -eq $exe } | Stop-Process -Force -ErrorAction SilentlyContinue
+          $v = (Get-Item $exe).VersionInfo.ProductVersion
+          "Version installée après mise à jour : $v"
+          if ($v -notlike "$($etat.version)*") { throw "La nouvelle version ne s'est pas installée" }
+          "✅ Mise à jour installée"

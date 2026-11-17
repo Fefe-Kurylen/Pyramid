@@ -9,5 +9,9 @@ contextBridge.exposeInMainWorld('native', {
   printers: () => ipcRenderer.invoke('printers'),
   tsa: (url, body) => ipcRenderer.invoke('tsa', url, body),
   version: () => ipcRenderer.invoke('app-version'),
+  onUpdate: cb => ipcRenderer.on('update', (e, o) => cb(o)),
+  updateState: () => ipcRenderer.invoke('update-state'),
+  checkUpdate: () => ipcRenderer.invoke('update-check'),
+  installUpdate: () => ipcRenderer.invoke('update-install'),
   platform: process.platform
 });

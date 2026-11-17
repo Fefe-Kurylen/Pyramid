@@ -10,8 +10,8 @@ Dossier du projet sur le PC : `C:\Users\felix\Desktop\Claude\Pyramid` (code dans
 - `web/index.html` — **source principale** (≈3 100 lignes, tout dans un seul fichier : CSS + HTML + une IIFE JS).
   C'est le seul fichier à modifier pour l'interface et les fonctions.
 - `windows/` — l'appli Electron 33
-  - `main.js` — processus principal (fenêtre, titleBarOverlay, IPC : save, open-file, titlebar, ready, html2pdf, printers, print, tsa)
-  - `preload.js` — expose `window.native` (save, onOpenFile, setTitleBar, ready, html2pdf, print, printers, tsa, platform)
+  - `main.js` — processus principal (fenêtre, titleBarOverlay, IPC : save, open-file, titlebar, ready, html2pdf, printers, print, tsa, update-state/check/install)
+  - `preload.js` — expose `window.native` (save, onOpenFile, setTitleBar, ready, html2pdf, print, printers, tsa, onUpdate, updateState, checkUpdate, installUpdate, platform)
   - `make-app.py` — transforme `web/index.html` en `windows/app/index.html` (retire les CDN, ajoute CSP + fonts.css, chemins locaux des libs)
   - `make-fonts.py` — génère `app/fonts.css` + `app/fonts/` (woff2 latin + latin-ext) depuis les paquets @fontsource
   - `afterPack.js` — met l'icône et les infos de version dans l'exe (resedit)
@@ -23,16 +23,17 @@ Dossier du projet sur le PC : `C:\Users\felix\Desktop\Claude\Pyramid` (code dans
   - `android/` — projet Android (module natif `PyramidNativePlugin.java` : impression, horodatage, « Ouvrir avec » / « Partager vers ») ; signature de publication via `keystore.properties` + `pyramid-upload.jks` (**jamais sur GitHub**, gardés dans `Clés-Android` sur le PC)
   - `ios/` — projet Xcode (Swift Package Manager ; `App/PyramidNative.swift` : impression AirPrint, horodatage, lecture des fichiers ouverts)
 - `.github/workflows/ios.yml` — vérifie sur un Mac de GitHub que l'appli iPhone se compile
+- `.github/workflows/release.yml` — publie chaque nouvelle version sur GitHub (Releases) pour le bouton « Mise à jour », puis l'essaie (0.0.1 → nouvelle version)
 - `.github/workflows/windows-store.yml` — fabrique le paquet Microsoft Store (`.appx`) sur un Windows de GitHub, le signe en test, l'installe, le lance, le désinstalle et passe la certification WACK (résultat PASS) ; le paquet est téléchargeable dans les « artifacts » du run
 - `store/` — fiche Microsoft Store prête à copier (`FICHE-STORE.md`), captures 1920×1080, rapport WACK
 - `PRIVACY.md` — politique de confidentialité publique (URL demandée par le Store)
 - `tests/` — `mobile.py` (32 tests en écran de téléphone : Chromium Android + WebKit iPhone, faux Capacitor), `full.py` (59 tests web, Playwright Python), `e6.js` (détection du texte dans Electron),
-  `e7.js` / `e9.js` (molette + impression), `tstart.js` (temps de démarrage), `docs/` (PDF de test).
+  `e7.js` / `e9.js` (molette + impression), `e16.js` (bouton Mise à jour), `tstart.js` (temps de démarrage), `docs/` (PDF de test).
   Les chemins dans les tests pointent encore vers l'ancien espace Linux (`/home/claude/...`, `/tmp/t/...`) : à adapter.
 
 ## 🔁 Synchronisation
 - Le dossier `Pyramid-code` du PC et le dépôt GitHub **Fefe-Kurylen/Pyramid** contiennent les mêmes fichiers : toute modification est faite aux deux endroits en même temps, et les fichiers obsolètes sont supprimés des deux côtés.
-- GitHub sert uniquement de stockage du code.
+- GitHub stocke le code et publie les mises à jour (Releases).
 
 ## 🔨 Construire / installer
 ```
@@ -57,10 +58,15 @@ Installation actuelle sur le PC : `C:\Users\felix\AppData\Local\Programs\Pyramid
 (mise à jour rapide : remplacer `resources\app.asar` par `dist\win-unpacked\resources\app.asar`, Pyramid fermé).
 
 ## 🔄 Mises à jour
-- Les mises à jour passent par le **Microsoft Store** (compte développeur de Félix créé, nom « Pyramid PDF » réservé). **Version 1.3.0 soumise le 17/11/2026** (fiche en français, runFullTrust justifié, politique de confidentialité = URL GitHub de PRIVACY.md) — en certification. Identité Store dans `build.appx` de `windows/package.json` : `Kurylen.PyramidPDF`, `CN=B85CD3FF-A422-425E-9A54-A6E74180E94E`, éditeur `Kurylen` ; logos dans `windows/build/appx/`.
-- Nouvelle version : augmenter `version` dans `windows/package.json`, pousser sur GitHub, récupérer le `.appx` dans les artifacts du workflow `windows-store.yml`, puis Partner Center → nouvelle soumission → Packages.
-- L'ancien système electron-updater / GitHub Releases a été retiré (v1.2.0). GitHub sert uniquement de stockage.
-- Version actuelle : 1.3.1 sur Windows (correctif d'impression ; Store encore en 1.3.0), 1.3.0 sur Mac, iPhone, Android. Le dossier de données reste `%APPDATA%\Pyramid` (`app.setPath('userData', …)` dans main.js) pour garder les réglages.
+- **Bouton « Mise à jour » dans l'appli (GitHub)** depuis la 1.4.0 : `main.js` (electron-updater, dépôt public `Fefe-Kurylen/Pyramid`).
+  - Version installée (Setup) : recherche 8 s après le lancement, toutes les 30 min et au retour sur la fenêtre (≥ 10 min) ; téléchargement en arrière-plan, puis bouton **« Mettre à jour (x.y.z) »** en haut (`#updBtn`) → redémarre et installe. Pendant le téléchargement : « Mise à jour x.y.z · 42 % ».
+  - Portable et Mac : la nouvelle version est signalée (API GitHub), le bouton ouvre la page de téléchargement.
+  - Version Microsoft Store (`process.windowsStore`) : rien, le Store s'en charge.
+  - Réglages → « 🔄 Mises à jour » : version, état, « Rechercher maintenant ».
+- **Publier une nouvelle version** : augmenter `version` dans `windows/package.json` et pousser sur `main`. Le workflow `.github/workflows/release.yml` fabrique Setup + portable + `latest.yml` et les publie sous l'étiquette `v<version>` (onglet Releases), puis **essaie la vraie chaîne** : une 0.0.1 installée doit trouver, télécharger et installer la nouvelle version. Si la version est déjà publiée, rien n'est refait.
+- Les applis installées **avant la 1.4.0** n'ont pas de bouton : installer une fois `Pyramid-PDF-Installation-1.4.0.exe` (ou plus récent).
+- Microsoft Store : en parallèle, **version 1.3.0 soumise le 17/11/2026** (fiche en français, runFullTrust justifié, politique de confidentialité = URL GitHub de PRIVACY.md). Identité Store dans `build.appx` de `windows/package.json` : `Kurylen.PyramidPDF`, `CN=B85CD3FF-A422-425E-9A54-A6E74180E94E`, éditeur `Kurylen` ; logos dans `windows/build/appx/`. Paquet `.appx` : artifacts du workflow `windows-store.yml`, puis Partner Center → nouvelle soumission → Packages.
+- Version actuelle : 1.4.0 sur Windows (bouton de mise à jour), 1.3.0 sur Mac, iPhone, Android. Le dossier de données reste `%APPDATA%\Pyramid` (`app.setPath('userData', …)` dans main.js) pour garder les réglages.
 
 ## 🧠 Fonctionnement clé
 - **Modes** : `MODE = 'read' | 'edit'` (classe `reading` sur `<html>`). Le PDF s'ouvre en **lecteur** (pages continues,
