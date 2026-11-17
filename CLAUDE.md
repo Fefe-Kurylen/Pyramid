@@ -21,6 +21,10 @@ Dossier du projet sur le PC : `C:\Users\felix\Desktop\Claude\Pyramid` (code dans
   `e7.js` / `e9.js` (molette + impression), `tstart.js` (temps de démarrage), `docs/` (PDF de test).
   Les chemins dans les tests pointent encore vers l'ancien espace Linux (`/home/claude/...`, `/tmp/t/...`) : à adapter.
 
+## 🔁 Synchronisation
+- Le dossier `Pyramid-code` du PC et le dépôt GitHub **Fefe-Kurylen/Pyramid** contiennent les mêmes fichiers : toute modification est faite aux deux endroits en même temps, et les fichiers obsolètes sont supprimés des deux côtés.
+- GitHub sert de stockage (code + installateurs en Releases).
+
 ## 🔨 Construire / installer
 ```
 cd windows
