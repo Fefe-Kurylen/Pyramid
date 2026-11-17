@@ -65,6 +65,7 @@ Première version sur le Microsoft Store : modification du texte d'origine, sign
 | Site web | https://github.com/Fefe-Kurylen/Pyramid |
 | Copyright | © 2026 Pyramid PDF |
 | Captures d'écran | dossier `captures` (1920 × 1080) |
+| Logos du Store | dossier `logos` : icône de vignette 1:1 (300×300), logo carré 1:1 (1080 et 2160), affiche 9:16 (720×1080 et 1440×2160) |
 | Langue du paquet | Français (France) |
 | Classification par âge (IARC) | Application utilitaire, aucun contenu sensible, aucun échange entre utilisateurs, aucun achat dans l'appli |
 | Matériel | Souris / clavier / tactile, Windows 10 (1809) ou plus récent, 64 bits |
