@@ -39,7 +39,7 @@ Installation actuelle sur le PC : `C:\Users\felix\AppData\Local\Programs\Pyramid
 ## 🔄 Mises à jour
 - Les mises à jour passeront par le **Microsoft Store** (en préparation : compte développeur, réservation du nom « Pyramid PDF », identifiants du paquet à recevoir de Félix, paquet MSIX à fabriquer sur Windows).
 - L'ancien système electron-updater / GitHub Releases a été retiré (v1.2.0). GitHub sert uniquement de stockage.
-- Version actuelle : 1.2.0. Le dossier de données reste `%APPDATA%\Pyramid` (`app.setPath('userData', …)` dans main.js) pour garder les réglages.
+- Version actuelle : 1.2.1. Le dossier de données reste `%APPDATA%\Pyramid` (`app.setPath('userData', …)` dans main.js) pour garder les réglages.
 
 ## 🧠 Fonctionnement clé
 - **Modes** : `MODE = 'read' | 'edit'` (classe `reading` sur `<html>`). Le PDF s'ouvre en **lecteur** (pages continues,
@@ -60,6 +60,7 @@ Installation actuelle sur le PC : `C:\Users\felix\AppData\Local\Programs\Pyramid
   radius, thumbs, wheel. Défauts : Graphite, accent `#c8703f` (orange doux), Classique, Confortable.
 - **Disposition Pro** : `placeRail()` déplace `#rbar`, `#tools` et `#pagebar` dans la barre d'icônes verticale `#rail` à gauche (bulles d'aide à droite).
 - **Miniatures** : largeur réglable à la souris via `#sideGrip` (double-clic = défaut), mémorisée dans localStorage `pyramid-sidew` ; résolution des miniatures adaptée à la largeur (`thumbPx`).
+- **Signature** : bouton `#rSign` dans la barre du mode lecture (à côté de Modifier), plus dans les outils du mode Modifier ; `placeInReader()` affiche un aperçu qui suit la souris et pose la signature à l'endroit cliqué, sans quitter la lecture (Échap pour annuler).
 - **Molette** : en lecture elle fait défiler (Ctrl + molette = zoom) ; en mode Modifier elle zoome (ou défile selon le réglage).
 - **Débogage** : variable d'environnement `PYR_DEBUG=1` → `window.__pyr` (S, getLines, cur, TABS, refineFont, hiRes…).
 

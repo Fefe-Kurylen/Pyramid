@@ -346,6 +346,8 @@ html:not(.reading) #reader,html:not(.reading) #rbar{display:none!important}
 .updrow{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .updrow [data-uver]{font-weight:600;font-variant-numeric:tabular-nums}
 @media (max-width:760px){ .prt{flex-direction:column;height:auto} .prt .ps{width:auto;border-left:0} .prt .pvs{max-height:40vh} }
+#placeGhost{position:fixed;z-index:60;pointer-events:none;opacity:.75;display:none;outline:1.5px dashed var(--accent);outline-offset:3px;border-radius:2px}
+.placing #reader,.placing #reader *{cursor:crosshair!important}
 /* ---------- Toast / busy ---------- */
 #toast{position:fixed;left:50%;bottom:calc(24px + var(--sab));transform:translate(-50%,20px);background:var(--panel2);border:1px solid var(--line2);padding:10px 16px;border-radius:12px;opacity:0;transition:.25s;z-index:60;pointer-events:none;font-weight:500;white-space:nowrap}
 #toast.show{opacity:1;transform:translate(-50%,0)}
@@ -424,6 +426,7 @@ html:not(.reading) #reader,html:not(.reading) #rbar{display:none!important}
       <button class="ibtn" id="rFind" data-ic="search" title="Rechercher dans le document (Ctrl+F)"></button>
       <button class="ibtn" id="rPrint" data-ic="print" title="Imprimer (Ctrl+P)"></button>
       <div class="sep"></div>
+      <button class="ibtn" id="rSign" data-ic="sign" title="Signer le document"></button>
       <button class="btn primary" id="editBtn" data-ic="edittext" title="Modifier le document (Ctrl+E)"><span>Modifier</span></button>
     </div>
     <div id="reader"><div id="rIn"></div></div>
@@ -442,7 +445,6 @@ html:not(.reading) #reader,html:not(.reading) #rbar{display:none!important}
       <button class="ibtn" data-tool="wo" title="Masquer / effacer une zone (W)" data-ic="eraser"></button>
       <div class="sep"></div>
       <button class="ibtn" id="imgBtn" title="Insérer une image" data-ic="image"></button>
-      <button class="ibtn" id="signBtn" title="Signer le document" data-ic="sign"></button>
     </div>
     <div class="float hidden" id="props"></div>
     <div id="stage"><div id="stageIn">
@@ -2077,6 +2079,7 @@ function visibleCenter(){
   return { x: Math.max(0,Math.min(dw,x)), y: Math.max(0,Math.min(dh,y)) };
 }
 function insertImage(src, natW, natH, targetW, extra){
+  if (MODE === 'read') return placeInReader(src, natW, natH, targetW, extra);
   const p = cur(), { dw } = dims(p);
   const w = Math.min(targetW, dw*0.8), h = w*natH/natW, c = visibleCenter();
   commit(); const a = { t:'img', src, x:c.x-w/2, y:c.y-h/2, w, h, ...(extra||{}) };
@@ -2746,7 +2749,7 @@ const readerHitsAll = () => { if (MODE === 'read') RP.forEach(rp => rp.state ===
 function setMode(m){
   if (m === MODE || !S.pages.length && m === 'edit') return;
   if (S.editing) commitText();
-  closeMenu(); hideTip();
+  closeMenu(); hideTip(); endPlace();
   MODE = m; document.documentElement.classList.toggle('reading', m === 'read');
   if (m === 'read'){ S.sel = null; S.psel.clear(); renderThumbs(); buildReader(); }
   else {
@@ -2876,6 +2879,41 @@ async function printDoc(){
     draw();
   });
 }
+
+/* ================= Placement d’une signature en lecture ================= */
+let placing = null;
+function placeInReader(src, natW, natH, targetW, extra){
+  endPlace();
+  const ghost = document.createElement('img'); ghost.id = 'placeGhost'; ghost.src = src; ghost.alt = '';
+  document.body.appendChild(ghost);
+  const size = p => { const w = Math.min(targetW, dims(p).dw*0.8); return [w, w*natH/natW]; };
+  const pageAt = e => { const el = e.target.closest && e.target.closest('.rpage'); return el ? RP[+el.dataset.i] : null; };
+  const move = e => {
+    const rp = pageAt(e);
+    if (!rp){ ghost.style.display = 'none'; return; }
+    const [w, h] = size(rp.p);
+    ghost.style.display = 'block'; ghost.style.width = w*rScale + 'px'; ghost.style.height = h*rScale + 'px';
+    ghost.style.left = (e.clientX - w*rScale/2) + 'px'; ghost.style.top = (e.clientY - h*rScale/2) + 'px';
+  };
+  const click = e => {
+    const rp = pageAt(e); if (!rp) return;
+    e.preventDefault(); e.stopPropagation();
+    const r = rp.el.getBoundingClientRect(), p = rp.p, [w, h] = size(p), { dw, dh } = dims(p);
+    const x = Math.max(0, Math.min(dw - w, (e.clientX - r.left)/rScale - w/2)), y = Math.max(0, Math.min(dh - h, (e.clientY - r.top)/rScale - h/2));
+    commit(); A(p).push({ t:'img', src, x, y, w, h, ...(extra||{}) }); imgEl(src);
+    S.cur = rp.i; markThumb(); updRNum();
+    endPlace();
+    const im = imgEl(src), go = () => { rp.gen++; renderRP(rp); refreshThumb(p); };
+    if (im.complete && im.naturalWidth) go(); else im.addEventListener('load', go, { once:true });
+    toast('✅ Signature ajoutée · « Modifier » pour la déplacer ou l’agrandir');
+  };
+  const key = e => { if (e.key === 'Escape'){ e.preventDefault(); endPlace(); toast('Signature annulée'); } };
+  reader.addEventListener('pointermove', move); reader.addEventListener('click', click, true); document.addEventListener('keydown', key, true);
+  document.documentElement.classList.add('placing');
+  placing = () => { reader.removeEventListener('pointermove', move); reader.removeEventListener('click', click, true); document.removeEventListener('keydown', key, true); ghost.remove(); document.documentElement.classList.remove('placing'); };
+  toast('✍️ Clique sur la page à l’endroit où placer la signature (Échap pour annuler)');
+}
+function endPlace(){ if (placing){ const f = placing; placing = null; f(); } }
 
 /* ================= Rechercher / remplacer ================= */
 let findEl = null, findRes = [], findIdx = -1, findT = null;
@@ -3158,7 +3196,7 @@ $('#setBtn').onclick = openSettings;
 $('#undo').onclick = undo; $('#redo').onclick = redo;
 document.querySelectorAll('[data-tool]').forEach(b => b.onclick = () => setTool(b.dataset.tool));
 $('#imgBtn').onclick = () => $('#fImg').click();
-$('#signBtn').onclick = openSign;
+$('#rSign').onclick = () => { if (S.pages.length) openSign(); };
 $('#prev').onclick = () => goto(S.cur-1); $('#next').onclick = () => goto(S.cur+1);
 $('#rotL').onclick = () => rotate(-90); $('#rotR').onclick = () => rotate(90);
 $('#mvU').onclick = () => movePage(S.cur, S.cur-1);
