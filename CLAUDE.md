@@ -23,6 +23,9 @@ Dossier du projet sur le PC : `C:\Users\felix\Desktop\Claude\Pyramid` (code dans
   - `android/` — projet Android (module natif `PyramidNativePlugin.java` : impression, horodatage, « Ouvrir avec » / « Partager vers ») ; signature de publication via `keystore.properties` + `pyramid-upload.jks` (**jamais sur GitHub**, gardés dans `Clés-Android` sur le PC)
   - `ios/` — projet Xcode (Swift Package Manager ; `App/PyramidNative.swift` : impression AirPrint, horodatage, lecture des fichiers ouverts)
 - `.github/workflows/ios.yml` — vérifie sur un Mac de GitHub que l'appli iPhone se compile
+- `.github/workflows/windows-store.yml` — fabrique le paquet Microsoft Store (`.appx`) sur un Windows de GitHub, le signe en test, l'installe, le lance, le désinstalle et passe la certification WACK (résultat PASS) ; le paquet est téléchargeable dans les « artifacts » du run
+- `store/` — fiche Microsoft Store prête à copier (`FICHE-STORE.md`), captures 1920×1080, rapport WACK
+- `PRIVACY.md` — politique de confidentialité publique (URL demandée par le Store)
 - `tests/` — `mobile.py` (32 tests en écran de téléphone : Chromium Android + WebKit iPhone, faux Capacitor), `full.py` (59 tests web, Playwright Python), `e6.js` (détection du texte dans Electron),
   `e7.js` / `e9.js` (molette + impression), `tstart.js` (temps de démarrage), `docs/` (PDF de test).
   Les chemins dans les tests pointent encore vers l'ancien espace Linux (`/home/claude/...`, `/tmp/t/...`) : à adapter.
@@ -54,7 +57,8 @@ Installation actuelle sur le PC : `C:\Users\felix\AppData\Local\Programs\Pyramid
 (mise à jour rapide : remplacer `resources\app.asar` par `dist\win-unpacked\resources\app.asar`, Pyramid fermé).
 
 ## 🔄 Mises à jour
-- Les mises à jour passeront par le **Microsoft Store** (en préparation : compte développeur, réservation du nom « Pyramid PDF », identifiants du paquet à recevoir de Félix, paquet MSIX à fabriquer sur Windows).
+- Les mises à jour passent par le **Microsoft Store**. Le paquet est prêt (`build.appx` dans `windows/package.json`, logos dans `windows/build/appx/`) avec une **identité provisoire** (`PyramidPDF.Test` / `CN=PyramidPDFTest`) : remplacer `identityName`, `publisher` et `publisherDisplayName` par les valeurs de Partner Center (Gestion des produits → Identité du produit), pousser sur GitHub, puis récupérer le `.appx` dans les artifacts du workflow et l'envoyer dans Partner Center.
+- En attente de Félix : création du compte développeur (particulier, gratuit) et réservation du nom « Pyramid PDF ».
 - L'ancien système electron-updater / GitHub Releases a été retiré (v1.2.0). GitHub sert uniquement de stockage.
 - Version actuelle : 1.3.0 (Windows, Mac, iPhone, Android). Le dossier de données reste `%APPDATA%\Pyramid` (`app.setPath('userData', …)` dans main.js) pour garder les réglages.
 
