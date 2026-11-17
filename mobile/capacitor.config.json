@@ -1,0 +1,11 @@
+{
+  "appId": "fr.pyramid.pdf",
+  "appName": "Pyramid PDF",
+  "webDir": "www",
+  "backgroundColor": "#1e2026",
+  "android": { "allowMixedContent": false },
+  "ios": { "contentInset": "never", "backgroundColor": "#1e2026" },
+  "plugins": {
+    "SystemBars": { "insetsHandling": "css", "initialViewportFitValueHint": "cover", "style": "DARK" }
+  }
+}

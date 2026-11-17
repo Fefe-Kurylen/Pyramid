@@ -1,0 +1,26 @@
+# Vérifie que l'appli iPhone se compile (Mac de GitHub, sans signature)
+name: iPhone - compilation
+on:
+  push:
+    paths: ['mobile/**', 'web/**', 'windows/app/**', '.github/workflows/ios.yml']
+  workflow_dispatch:
+jobs:
+  ios:
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: python3 make-mobile.py
+      - run: npx cap sync ios
+      - name: Compilation pour le simulateur iPhone
+        run: |
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO build | tail -n 40
+          test ${PIPESTATUS[0]} -eq 0

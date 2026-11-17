@@ -173,8 +173,14 @@ label.opt input{accent-color:var(--accent)}
 .tab .x{width:24px;height:24px;border-radius:min(6px,var(--rb));display:grid;place-items:center;color:var(--muted);flex:none}
 .tab .x:hover{background:var(--line2);color:var(--text)}
 .newtab{width:calc(var(--ib) - 4px);height:calc(var(--ib) - 4px);flex:none}
-.native header{-webkit-app-region:drag;padding-right:150px}
-.native header button,.native .tab,.native #tabs{-webkit-app-region:no-drag}
+.desk header{-webkit-app-region:drag}
+.plat-win32 header{padding-right:150px}
+.plat-darwin header{padding-left:84px}
+.desk header button,.desk .tab,.desk #tabs{-webkit-app-region:no-drag}
+.mobile .thumb .acts{opacity:1}
+#rbar .num,#pagebar .num{white-space:nowrap}
+@media (max-width:480px){ #exportBtn span,#importBtn span{display:none} #exportBtn,#importBtn{width:var(--ib);padding:0;justify-content:center} }
+.mobile #tip{display:none!important}
 /* ---------- Settings ---------- */
 .card.wide{width:min(580px,100%)}
 .seg{display:flex;gap:4px;background:var(--panel2);padding:4px;border-radius:calc(var(--rb) + 3px);flex-wrap:wrap}
@@ -2663,6 +2669,7 @@ async function exportPdf(indices, filename, dsig, opts = {}){
     busy(false);
     if (encWarn) toast('🔐 PDF protégé : ses pages ont été exportées en image HD');
     const exportedTab = TI;
+    if (opts.returnBytes) return bytes;
     if (await saveFile(new Blob([bytes], { type:'application/pdf' }), filename) && exportedTab === TI && indices.length === S.pages.length){ S.dirty = false; renderTabs(); }
   } catch(e){ console.error(e); busy(false); toast('❌ Échec de l’export'); }
 }
@@ -2926,6 +2933,13 @@ function sheetOrient(idx){
   return (PRINT.per === 2 ? land <= idx.length/2 : land > idx.length/2) ? 'landscape' : 'portrait';
 }
 async function printDoc(){
+  if (window.native && window.native.printPdf){
+    // iPhone / Android : fenêtre d’impression du système (aperçu, imprimante, copies, couleur…)
+    const bytes = await exportPdf(S.pages.map((_, i) => i), (S.name || 'document') + '.pdf', null, { returnBytes:true });
+    if (!bytes) return;
+    try { await window.native.printPdf(bytes, (S.name || 'document') + '.pdf'); } catch(e){ console.error(e); toast('❌ Impression impossible'); }
+    return;
+  }
   if (!(window.native && window.native.print)){ toast('🖨️ L’impression est disponible dans le logiciel Windows'); return; }
   if (S.editing) commitText();
   Object.assign(PRINT, { copies:1, range:'all', custom:'' });
@@ -3418,7 +3432,8 @@ applySettings(false);
 renderTabs();
 if (/[?&]debug\b/.test(location.search)) window.__pyr = { S, getLines, cur, TABS, switchTab, embWorks, goto, embOk, startPara, openFind, zoomTo, bbox, refineFont, hiRes, sampleColorsHi };
 if (window.native){
-  document.documentElement.classList.add('native');
+  const plat = String(window.native.platform || '');
+  document.documentElement.classList.add('native', 'plat-' + plat, /^(ios|android)$/.test(plat) ? 'mobile' : 'desk');
   applySettings(false);
   window.native.onOpenFile(f => openFiles([new File([f.data], f.name)], false));
   const goReady = () => window.native.ready && window.native.ready();

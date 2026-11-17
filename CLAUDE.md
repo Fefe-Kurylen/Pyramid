@@ -1,6 +1,6 @@
 # Pyramid PDF — éditeur PDF de Félix
 
-Logiciel Windows autonome (Electron) + version web, pour lire et modifier des PDF.
+Logiciel de lecture et modification de PDF : Windows et Mac (Electron), iPhone et Android (Capacitor), plus une version web.
 Félix parle français : répondre en français, avec beaucoup d'emojis, réponses visuelles et structurées
 (titres avec emoji, listes à cocher, tableaux seulement si utiles), sans conseils non demandés.
 
@@ -17,7 +17,13 @@ Dossier du projet sur le PC : `C:\Users\felix\Desktop\Claude\Pyramid` (code dans
   - `afterPack.js` — met l'icône et les infos de version dans l'exe (resedit)
   - `app/lib/` — pdf.js 3.11.174 (+ worker), pdf-lib 1.17.1, node-forge 1.3.1, mammoth, xlsx, pako, UTIF
   - `build/icon.png`, `build/icon.ico`
-- `tests/` — `full.py` (59 tests web, Playwright Python), `e6.js` (détection du texte dans Electron),
+- `mobile/` — appli iPhone + Android (Capacitor 8)
+  - `make-mobile.py` — construit `www/` à partir de `windows/app` (libs et polices locales) + `native-bridge.js`
+  - `native-bridge.js` — définit `window.native` sur mobile : save (fichier + feuille de partage), printPdf, tsa, onOpenFile, version
+  - `android/` — projet Android (module natif `PyramidNativePlugin.java` : impression, horodatage, « Ouvrir avec » / « Partager vers ») ; signature de publication via `keystore.properties` + `pyramid-upload.jks` (**jamais sur GitHub**, gardés dans `Clés-Android` sur le PC)
+  - `ios/` — projet Xcode (Swift Package Manager ; `App/PyramidNative.swift` : impression AirPrint, horodatage, lecture des fichiers ouverts)
+- `.github/workflows/ios.yml` — vérifie sur un Mac de GitHub que l'appli iPhone se compile
+- `tests/` — `mobile.py` (32 tests en écran de téléphone : Chromium Android + WebKit iPhone, faux Capacitor), `full.py` (59 tests web, Playwright Python), `e6.js` (détection du texte dans Electron),
   `e7.js` / `e9.js` (molette + impression), `tstart.js` (temps de démarrage), `docs/` (PDF de test).
   Les chemins dans les tests pointent encore vers l'ancien espace Linux (`/home/claude/...`, `/tmp/t/...`) : à adapter.
 
@@ -33,13 +39,24 @@ python make-fonts.py      # une seule fois (polices)
 python make-app.py        # après chaque modification de web/index.html
 npm run dist              # → dist/Pyramid-PDF-Installation-X.Y.Z.exe + Pyramid-PDF-Portable-X.Y.Z.exe
 ```
+Mac (depuis n'importe quel système) : `ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ npx electron-builder --mac`, puis signature ad hoc `rcodesign sign "dist/mac-arm64/Pyramid PDF.app"` (sans signature, macOS refuse de lancer l'appli sur Apple Silicon) ; publication : certificat Developer ID + notarisation (compte Apple Developer).
+
+Mobile :
+```
+cd mobile
+npm install
+python make-mobile.py && npx cap sync
+cd android && ./gradlew assembleRelease bundleRelease   # APK (installation directe) + AAB (Play Store)
+# iPhone : ouvrir ios/App/App.xcodeproj dans Xcode sur un Mac (ou service en ligne type Codemagic), signer avec le compte Apple Developer
+```
+
 Installation actuelle sur le PC : `C:\Users\felix\AppData\Local\Programs\Pyramid`
 (mise à jour rapide : remplacer `resources\app.asar` par `dist\win-unpacked\resources\app.asar`, Pyramid fermé).
 
 ## 🔄 Mises à jour
 - Les mises à jour passeront par le **Microsoft Store** (en préparation : compte développeur, réservation du nom « Pyramid PDF », identifiants du paquet à recevoir de Félix, paquet MSIX à fabriquer sur Windows).
 - L'ancien système electron-updater / GitHub Releases a été retiré (v1.2.0). GitHub sert uniquement de stockage.
-- Version actuelle : 1.2.2. Le dossier de données reste `%APPDATA%\Pyramid` (`app.setPath('userData', …)` dans main.js) pour garder les réglages.
+- Version actuelle : 1.3.0 (Windows, Mac, iPhone, Android). Le dossier de données reste `%APPDATA%\Pyramid` (`app.setPath('userData', …)` dans main.js) pour garder les réglages.
 
 ## 🧠 Fonctionnement clé
 - **Modes** : `MODE = 'read' | 'edit'` (classe `reading` sur `<html>`). Le PDF s'ouvre en **lecteur** (pages continues,
@@ -67,7 +84,7 @@ Installation actuelle sur le PC : `C:\Users\felix\AppData\Local\Programs\Pyramid
 - **Débogage** : variable d'environnement `PYR_DEBUG=1` → `window.__pyr` (S, getLines, cur, TABS, refineFont, hiRes…).
 
 ## ✅ État actuel (17/11/2026)
-Tout fonctionne : 58 tests web sur 59 OK. Le seul échec attendu : une police inconnue (Lora) reste en mode « emb »
+Tout fonctionne : 58 tests web sur 59 OK, 32/32 tests mobiles. Le seul échec attendu : une police inconnue (Lora) reste en mode « emb »
 au lieu d'une police équivalente.
 
 ## 📝 À faire
@@ -77,3 +94,5 @@ au lieu d'une police équivalente.
 - [ ] Vérifier le temps d'ouverture de l'appli sur son PC après les optimisations (fenêtre affichée tout de suite,
       pdf-lib et forge chargés en `defer`, cache V8).
 - [ ] Tester l'impression réelle sur son imprimante.
+- [ ] Tester les applis sur un vrai téléphone (Android : installer l'APK ; iPhone : compiler sur un Mac / en ligne).
+- [ ] Publication : Google Play (compte 25 $), App Store et Mac (compte Apple Developer 99 $/an, signature Developer ID + notarisation).

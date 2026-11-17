@@ -6,7 +6,17 @@ const fs = require('fs');
 
 // Garde les réglages de l’ancienne version « Pyramid »
 app.setPath('userData', path.join(app.getPath('appData'), 'Pyramid'));
-Menu.setApplicationMenu(null);
+const isMac = process.platform === 'darwin';
+if (isMac){
+  // Menu Mac standard (Pyramid PDF, Édition pour Cmd+C/V/Z, Fenêtre) : indispensable aux raccourcis clavier
+  Menu.setApplicationMenu(Menu.buildFromTemplate([
+    { role: 'appMenu', label: 'Pyramid PDF' },
+    { role: 'fileMenu', label: 'Fichier' },
+    { role: 'editMenu', label: 'Édition' },
+    { role: 'viewMenu', label: 'Affichage' },
+    { role: 'windowMenu', label: 'Fenêtre' }
+  ]));
+} else Menu.setApplicationMenu(null);
 nativeTheme.themeSource = 'dark';
 
 let win = null, ready = false, lastDir = null;
@@ -28,8 +38,8 @@ function createWindow(){
     width: 1400, height: 900, minWidth: 820, minHeight: 560,
     backgroundColor: '#1e2026', title: 'Pyramid PDF', show: true,
     icon: path.join(__dirname, 'app', 'icon.png'),
-    titleBarStyle: 'hidden',
-    titleBarOverlay: { color: '#262930', symbolColor: '#e8eaf0', height: 52 },
+    titleBarStyle: isMac ? 'hiddenInset' : 'hidden',
+    ...(isMac ? { trafficLightPosition: { x: 16, y: 19 } } : { titleBarOverlay: { color: '#262930', symbolColor: '#e8eaf0', height: 52 } }),
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, spellcheck: false, v8CacheOptions: 'bypassHeatCheck', backgroundThrottling: false }
   });
   win.loadFile(path.join(__dirname, 'app', 'index.html'), process.env.PYR_DEBUG ? { query: { debug: '1' } } : undefined);
@@ -65,7 +75,7 @@ ipcMain.on('titlebar', (e, o) => {
   try {
     const light = /^#?([0-9a-f]{6})$/i.test(o.color) && parseInt(o.color.replace('#','').slice(0,2), 16) > 200;
     nativeTheme.themeSource = light ? 'light' : 'dark';
-    if (win.setTitleBarOverlay) win.setTitleBarOverlay({ color: o.color, symbolColor: o.symbolColor, height: Math.max(28, Math.min(80, o.height|0)) });
+    if (!isMac && win.setTitleBarOverlay) win.setTitleBarOverlay({ color: o.color, symbolColor: o.symbolColor, height: Math.max(28, Math.min(80, o.height|0)) });
   } catch {}
 });
 const tmpHtml = html => { const f = path.join(os.tmpdir(), `pyramid-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.html`); fs.writeFileSync(f, html, 'utf8'); return f; };
@@ -134,6 +144,8 @@ ipcMain.handle('app-version', e => fromApp(e) ? app.getVersion() : '');
 ipcMain.on('ready', e => {
   if (!fromApp(e)) return; ready = true; const f = pending.splice(0); sendFiles(f); });
 
+// Mac : fichiers ouverts depuis le Finder (double-clic, glisser sur l’icône)
+app.on('open-file', (e, f) => { e.preventDefault(); if (fs.existsSync(f)) sendFiles([f]); });
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
   app.on('second-instance', (e, argv, cwd) => {
@@ -144,4 +156,5 @@ else {
   });
   app.whenReady().then(() => { createWindow(); sendFiles(fileArgs(process.argv)); });
   app.on('window-all-closed', () => app.quit());
+  app.on('activate', () => { if (!win) createWindow(); });
 }

@@ -1,10 +1,11 @@
 {
   "name": "pyramid",
-  "version": "1.2.2",
+  "version": "1.3.0",
   "description": "Pyramid PDF — éditeur PDF",
   "main": "main.js",
   "scripts": {
-    "dist": "electron-builder --win --x64 --publish never"
+    "dist": "electron-builder --win --x64 --publish never",
+    "dist:mac": "electron-builder --mac --publish never"
   },
   "keywords": [],
   "author": "Pyramid PDF",
@@ -106,7 +107,16 @@
         }
       ],
       "icon": "build/icon.ico",
-      "signAndEditExecutable": false
+      "signAndEditExecutable": false,
+      "fileAssociations": [
+        {
+          "ext": "pdf",
+          "name": "Document PDF",
+          "description": "Document PDF",
+          "role": "Editor",
+          "icon": "build/icon.ico"
+        }
+      ]
     },
     "nsis": {
       "oneClick": false,
@@ -130,15 +140,33 @@
     "portable": {
       "artifactName": "Pyramid-PDF-Portable-${version}.exe"
     },
-    "fileAssociations": [
-      {
-        "ext": "pdf",
-        "name": "Document PDF",
-        "description": "Document PDF",
-        "role": "Editor",
-        "icon": "build/icon.ico"
-      }
-    ],
-    "publish": null
+    "publish": null,
+    "mac": {
+      "target": [
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.png",
+      "identity": null,
+      "darkModeSupport": true,
+      "artifactName": "Pyramid-PDF-Mac-${arch}-${version}.${ext}",
+      "extendInfo": {
+        "NSHumanReadableCopyright": "© 2026 Pyramid PDF"
+      },
+      "fileAssociations": [
+        {
+          "ext": "pdf",
+          "name": "Document PDF",
+          "role": "Editor",
+          "rank": "Alternate"
+        }
+      ]
+    }
   }
 }
