@@ -68,7 +68,8 @@ Tout fonctionne : 58 tests web sur 59 OK. Le seul échec attendu : une police in
 au lieu d'une police équivalente.
 
 ## 📝 À faire
-- [ ] Ajouter le lien de paiement **SumUp** (choix de Félix, Apple Pay + cartes) dans `SUPPORT_URL` (fenêtre « Soutenir Pyramid PDF ») quand Félix le donnera.
+- [ ] Ajouter le lien de paiement **Stripe** (choix final de Félix : Payment Link « montant libre », Apple Pay + cartes) dans `SUPPORT_URL` (fenêtre « Soutenir Pyramid PDF ») quand Félix le donnera.
+- [ ] Plus tard : système d'**abonnement** via Stripe (Stripe Billing + vérification de l'abonnement dans l'appli).
 - [ ] Clarifier sa demande « signature électronique horodatée officielle sans obligatoirement… » (phrase coupée).
 - [ ] Vérifier le temps d'ouverture de l'appli sur son PC après les optimisations (fenêtre affichée tout de suite,
       pdf-lib et forge chargés en `defer`, cache V8).
