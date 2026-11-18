@@ -13,4 +13,5 @@ const unpacked = p => p.replace(/app\.asar([\\/])/, 'app.asar.unpacked$1');
   await w.terminate();
   if (!/Facture/.test(data.text)) { console.error('OCR : texte non reconnu'); process.exit(1); }
   console.log('✅ OCR OK sur Windows');
+  process.exit(0);
 })().catch(e => { console.error(e); process.exit(1); });

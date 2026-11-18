@@ -24,5 +24,6 @@ jobs:
         run: |
           $dir = Join-Path $env:LOCALAPPDATA 'Programs\Pyramid PDF'
           $env:ELECTRON_RUN_AS_NODE = '1'
-          & "$dir\Pyramid PDF.exe" tests\ocr-windows.js "$dir\resources" tests\docs\scan-ocr.jpg
-          if ($LASTEXITCODE -ne 0) { throw "OCR en échec" }
+          $out = & "$dir\Pyramid PDF.exe" tests\ocr-windows.js "$dir\resources" tests\docs\scan-ocr.jpg 2>&1 | Out-String
+          $out
+          if ($out -notmatch 'OCR OK') { throw "OCR en échec" }
