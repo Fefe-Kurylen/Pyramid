@@ -1,0 +1,28 @@
+# Vérifie la reconnaissance du texte (OCR) dans Pyramid PDF installée sur un vrai Windows (dernière version publiée)
+name: Windows - essai OCR
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/ocr-windows.yml', 'tests/ocr-windows.js']
+  workflow_dispatch:
+jobs:
+  ocr:
+    runs-on: windows-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Installer la dernière version publiée
+        shell: pwsh
+        run: |
+          gh release download -R "${{ github.repository }}" -p "Pyramid-PDF-Installation-*.exe" -D dl
+          $s = Get-ChildItem dl\*.exe | Select-Object -First 1
+          "Installation de $($s.Name)"
+          Start-Process $s.FullName -ArgumentList '/S' -Wait
+      - name: OCR avec l'appli installée
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:LOCALAPPDATA 'Programs\Pyramid PDF'
+          $env:ELECTRON_RUN_AS_NODE = '1'
+          & "$dir\Pyramid PDF.exe" tests\ocr-windows.js "$dir\resources" tests\docs\scan-ocr.jpg
+          if ($LASTEXITCODE -ne 0) { throw "OCR en échec" }
