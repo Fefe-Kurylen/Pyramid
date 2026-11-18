@@ -20,7 +20,7 @@ window.Capacitor = { isNativePlatform: () => true, getPlatform: () => '%s', Plug
     subBuy: async () => { __calls.push(['subBuy']); window.__sub = { ...window.__sub, active: true, trial: true, expires: Date.now() + 14*864e5 }; return window.__sub; },
     subRestore: async () => window.__sub,
     subManage: async () => window.__sub } } };
-window.__sub = { active: true, trial: true, loaded: true, price: '1,00 €', eligibleTrial: false, trialDays: 14, expires: Date.now() + 10*864e5 };
+window.__sub = { active: true, trial: true, loaded: true, price: '0,99 €', eligibleTrial: false, trialDays: 14, expires: Date.now() + 10*864e5 };
 """
 res = {}
 def check(name, ok, info=''):
@@ -35,13 +35,13 @@ with sync_playwright() as p:
         check('pont natif chargé', E("!!window.native && window.native.platform") == plat)
         if True:   # abonnement sur les deux téléphones (App Store / Google Play)
             check('abonnement actif : appli accessible', E("!document.querySelector('#paywall').classList.contains('on') && !!window.native.sub"))
-            E("window.__sub = { active: false, loaded: true, price: '1,00 €', eligibleTrial: true, trialDays: 14 }; window.__subCb(window.__sub)"); pg.wait_for_timeout(400)
+            E("window.__sub = { active: false, loaded: true, price: '0,99 €', eligibleTrial: true, trialDays: 14 }; window.__subCb(window.__sub)"); pg.wait_for_timeout(400)
             check('sans abonnement : écran d’abonnement', E("document.querySelector('#paywall').classList.contains('on')"), E("document.querySelector('[data-pw-head]').textContent + ' / ' + document.querySelector('[data-pw-buy]').textContent"))
             vis_pw = E("(() => { const r = document.querySelector('[data-pw-restore]').getBoundingClientRect(); return r.bottom <= innerHeight + 1 || document.querySelector('#paywall').scrollHeight > innerHeight; })()")
             check('écran d’abonnement lisible', vis_pw)
             store = 'Google Play' if plat == 'android' else 'Apple'
             check('textes légaux adaptés au magasin', E(f"document.querySelector('[data-pw-legal]').textContent.includes('compte {store}')"), E("document.querySelector('[data-pw-legal]').textContent.slice(0, 160)"))
-            check('prix 1 € et 14 jours', E("/1,00 €/.test(document.querySelector('[data-pw-price]').textContent) && /14 jours gratuits/.test(document.querySelector('[data-pw-head]').textContent)"))
+            check('prix 0,99 € et 14 jours', E("/0,99 €/.test(document.querySelector('[data-pw-price]').textContent) && /14 jours gratuits/.test(document.querySelector('[data-pw-head]').textContent)"))
             pg.screenshot(path=f'/tmp/mt/{plat}-abonnement.png')
             pg.tap('[data-pw-buy]'); pg.wait_for_timeout(500)
             check('essai démarré → appli accessible', E("!document.querySelector('#paywall').classList.contains('on') && __calls.some(c => c[0] === 'subBuy')"))

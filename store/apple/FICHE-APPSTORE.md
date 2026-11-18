@@ -24,7 +24,7 @@
 | Identifiant du produit | `fr.pyramid.pdf.mensuel` |
 | Nom de référence | Pyramid PDF mensuel |
 | Durée | 1 mois |
-| Prix | 1,00 € (palier équivalent dans les autres pays) |
+| Prix | 0,99 € (palier équivalent dans les autres pays) |
 | Offre de lancement | Essai gratuit, 2 semaines (14 jours), nouveaux abonnés |
 | Nom affiché (fr) | Pyramid PDF |
 | Description affichée (fr) | Toutes les fonctions, chaque mois |
@@ -57,7 +57,7 @@ Thèmes sombre, clair et noir OLED, couleur d'accent, taille de l'interface.
 Aucun compte, aucun envoi de vos fichiers sur un serveur.
 
 ABONNEMENT
-14 jours d'essai gratuit, puis 1,00 € par mois. Le paiement est débité sur votre compte Apple à la fin de l'essai. L'abonnement se renouvelle automatiquement sauf résiliation au moins 24 h avant la fin de la période en cours, dans Réglages → votre nom → Abonnements.
+14 jours d'essai gratuit, puis 0,99 € par mois. Le paiement est débité sur votre compte Apple à la fin de l'essai. L'abonnement se renouvelle automatiquement sauf résiliation au moins 24 h avant la fin de la période en cours, dans Réglages → votre nom → Abonnements.
 Conditions d'utilisation : https://www.apple.com/legal/internet-services/itunes/dev/stdeula/
 Confidentialité : https://github.com/Fefe-Kurylen/Pyramid/blob/main/PRIVACY.md
 
@@ -65,7 +65,7 @@ Confidentialité : https://github.com/Fefe-Kurylen/Pyramid/blob/main/PRIVACY.md
 pdf,modifier,éditer,signer,signature,annoter,formulaire,remplir,document,scanner,imprimer,texte,lecteur
 
 ## 💬 Notes pour la vérification Apple
-L'appli s'ouvre sur l'écran d'abonnement (essai gratuit de 14 jours, puis 1,00 €/mois). Pour tester : démarrer l'essai avec un compte Sandbox, puis ouvrir un PDF (bouton Ouvrir, ou « Ouvrir avec » depuis Fichiers), toucher « Modifier » et toucher une ligne de texte pour la modifier. Aucun compte n'est nécessaire.
+L'appli s'ouvre sur l'écran d'abonnement (essai gratuit de 14 jours, puis 0,99 €/mois). Pour tester : démarrer l'essai avec un compte Sandbox, puis ouvrir un PDF (bouton Ouvrir, ou « Ouvrir avec » depuis Fichiers), toucher « Modifier » et toucher une ligne de texte pour la modifier. Aucun compte n'est nécessaire.
 
 ## 🖼️ Captures (dossier `captures/`)
 - iPhone 6,9" (1320 × 2868) : `iphone-1-lecture` … `iphone-5-clair`

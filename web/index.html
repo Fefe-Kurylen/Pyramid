@@ -551,7 +551,7 @@ html:not(.reading) #reader,html:not(.reading) #rbar{display:none!important}
     <li data-ic2="check">Impression et partage</li>
     <li data-ic2="check">Thèmes et interface personnalisables</li>
   </ul>
-  <div class="pw-offer"><b data-pw-head>14 jours gratuits</b><span data-pw-price>puis 1,00 € par mois · résiliable à tout moment</span></div>
+  <div class="pw-offer"><b data-pw-head>14 jours gratuits</b><span data-pw-price>puis 0,99 € par mois · résiliable à tout moment</span></div>
   <button class="pw-buy" data-pw-buy>Commencer l'essai gratuit</button>
   <div class="pw-err" data-pw-err></div>
   <button class="pw-restore" data-pw-restore>Restaurer mes achats</button>
@@ -3585,7 +3585,7 @@ applySettings(false);
 renderTabs();
 if (/[?&]debug\b/.test(location.search)) window.__pyr = { S, getLines, cur, TABS, switchTab, embWorks, goto, embOk, startPara, openFind, zoomTo, bbox, refineFont, hiRes, sampleColorsHi };
 /* ================= Abonnement téléphone (iPhone / iPad : App Store · Android : Google Play) =================
-   Essai gratuit de 14 jours puis 1 €/mois. iPhone : StoreKit 2 (PyramidNative.swift) ; Android : Google Play Billing
+   Essai gratuit de 14 jours puis 0,99 €/mois. iPhone : StoreKit 2 (PyramidNative.swift) ; Android : Google Play Billing
    (PyramidNativePlugin.java). Sans abonnement actif, l'écran d'abonnement couvre l'appli. L'ordinateur reste gratuit. */
 const SUB = { st: null, busy: false };
 const SUB_AND = !!(window.native && window.native.platform === 'android');
@@ -3605,7 +3605,7 @@ function subApply(st){
   const open = !(st && st.active);
   pw.classList.toggle('on', open);
   if (!open) return;
-  const price = (st && st.price) || '1,00 €', days = (st && st.trialDays) || 14;
+  const price = (st && st.price) || '0,99 €', days = (st && st.trialDays) || 14;
   const trial = !st || st.eligibleTrial !== false;
   const len = `${days} jours`;
   pw.querySelector('[data-pw-head]').textContent = trial ? `${days} jours gratuits` : 'Abonnement mensuel';
