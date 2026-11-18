@@ -26,12 +26,13 @@ jobs:
       ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
       ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
       TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      HAS_P8: ${{ secrets.ASC_KEY_P8 != '' }}
     steps:
       - uses: actions/checkout@v4
       - name: Secrets présents ?
         id: ok
         run: |
-          if [ -n "$ASC_KEY_ID" ] && [ -n "$TEAM_ID" ]; then echo "ok=1" >> $GITHUB_OUTPUT; else echo "ok=0" >> $GITHUB_OUTPUT; echo "Secrets Apple absents : rien à faire"; fi
+          if [ -n "$ASC_KEY_ID" ] && [ -n "$TEAM_ID" ] && [ "$HAS_P8" = "true" ]; then echo "ok=1" >> $GITHUB_OUTPUT; else echo "ok=0" >> $GITHUB_OUTPUT; echo "Secrets Apple absents : rien à faire"; fi
       - uses: actions/setup-node@v4
         if: steps.ok.outputs.ok == '1'
         with:
@@ -85,7 +86,7 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-      HAS_CERT: ${{ secrets.MAC_CERT_P12 != '' }}
+      HAS_CERT: ${{ secrets.MAC_CERT_P12 != '' && secrets.MAC_CERT_PASSWORD != '' && secrets.ASC_KEY_P8 != '' }}
     permissions:
       contents: write
     steps:
