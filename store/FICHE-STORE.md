@@ -6,36 +6,23 @@ Textes prêts à copier-coller dans Partner Center (Fiche du Store → Français
 Pyramid PDF
 
 ## 📝 Description
-Pyramid PDF est un éditeur PDF complet, rapide et élégant, qui fonctionne entièrement hors ligne.
+Pyramid PDF lit, modifie et signe tes PDF, simplement et hors ligne.
 
-Ouvre tes PDF dans un lecteur confortable, puis appuie sur « Modifier » : Pyramid PDF détecte le texte d'origine et sa police, pour corriger une facture, une fiche de paie ou un formulaire comme si tu tapais directement dans le document.
+✏️ Modifie le texte d'origine : touche une ligne, Pyramid PDF retrouve sa police, sa taille et sa couleur. Idéal pour une facture, un devis ou un formulaire.
 
-✏️ MODIFIER LE TEXTE D'ORIGINE
-Clique sur une ligne et modifie-la : la police, la taille, la couleur et l'alignement d'origine sont détectés automatiquement (Helvetica, Arial, Times, polices de factures et de documents administratifs…). Taille −/+, gras, italique, souligné, barré, paragraphes, déplacement des zones de texte.
+📱 Scanne avec ton téléphone : vise le QR code, photographie tes pages, elles arrivent redressées et nettoyées en PDF sur l'ordinateur. Le texte des pages scannées est reconnu et se modifie aussi.
 
-🖼️ IMAGES ET MISE EN PAGE
-Déplace, agrandis ou supprime les images du document, ajoute les tiennes. Des lignes d'alignement apparaissent pendant les déplacements pour tout aligner au millimètre.
+✍️ Signe en un clic, avec signature électronique horodatée.
 
-✍️ SIGNATURE ÉLECTRONIQUE HORODATÉE
-Signe en un clic depuis le mode lecture : dessine, tape ou importe ta signature et pose-la où tu veux. Ajoute une signature numérique avec horodatage officiel (RFC 3161, DigiCert, Sectigo ou FreeTSA) : toute modification ultérieure du PDF est détectée.
+🖼️ Déplace ou supprime les images, ajoute les tiennes, avec des repères d'alignement.
 
-📱 SCANNER AVEC TON TÉLÉPHONE
-Scanne le QR code avec ton téléphone (même Wi-Fi, aucune appli à installer), photographie tes pages : elles sont détectées, redressées, nettoyées (papier blanc, ombres effacées) et arrivent directement sur l'ordinateur en un seul PDF.
+📄 Ajoute, pivote, réorganise et fusionne les pages. Ouvre aussi les images, Word, Excel et TIFF.
 
-🔎 TEXTE DES DOCUMENTS SCANNÉS
-Les pages scannées sont lues automatiquement (reconnaissance du texte en français, hors ligne) : touche une ligne pour la corriger, comme dans un PDF normal.
+🖨️ Imprime avec aperçu et tous les réglages.
 
-📄 PAGES
-Ajoute, supprime, pivote, réordonne et duplique les pages. Importe d'autres PDF, des images, des documents Word, des tableaux Excel, des fichiers texte ou TIFF.
+🎨 Thèmes, couleurs et dispositions à ton goût, onglets pour plusieurs documents.
 
-🖨️ IMPRESSION AVEC APERÇU
-Aperçu net des feuilles et tous les réglages : imprimante, copies, couleur ou noir et blanc, qualité, format A4/A3/A5/Lettre, orientation, plusieurs pages par feuille, recto verso.
-
-🎨 INTERFACE PERSONNALISABLE
-Thèmes sombres et clair, couleur d'accent, dispositions Classique, Pro (toutes les icônes à gauche) ou Focus, densité, taille de l'interface, onglets pour travailler sur plusieurs documents.
-
-🔒 RESPECT DE LA VIE PRIVÉE
-Aucun compte, aucune publicité, aucune collecte de données : tes documents restent sur ton ordinateur.
+🔒 Aucun compte, aucune publicité : tes documents restent sur ton ordinateur.
 
 ## ⭐ Fonctionnalités (une par ligne)
 Modification du texte d'origine avec détection de la police
