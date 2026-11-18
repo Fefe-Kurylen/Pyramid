@@ -29,10 +29,8 @@ jobs:
       HAS_P8: ${{ secrets.ASC_KEY_P8 != '' }}
     steps:
       - uses: actions/checkout@v4
-      - name: Xcode le plus récent (Apple exige le SDK iOS 26 ou plus)
-        run: |
-          XC=$(ls -d /Applications/Xcode_*.app | grep -v beta | sort -V | tail -1)
-          sudo xcode-select -s "$XC"; xcodebuild -version
+      - name: Xcode par défaut du Mac (version finale, SDK iOS 26 ou plus exigé par Apple)
+        run: xcodebuild -version
       - name: Secrets présents ?
         id: ok
         run: |
