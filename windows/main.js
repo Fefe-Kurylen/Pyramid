@@ -142,7 +142,89 @@ ipcMain.handle('tsa', async (e, url, body) => {
 });
 ipcMain.handle('app-version', e => fromApp(e) ? app.getVersion() : '');
 
+/* ---------- Scanner avec le téléphone ----------
+   Petit serveur sur le réseau local (même Wi-Fi) : le téléphone ouvre la page du QR code (scan.html), photographie
+   les pages, les redresse, puis les envoie ; elles arrivent ici et s'ouvrent en un PDF dans un nouvel onglet.
+   Adresse protégée par un code secret aléatoire ; arrêt automatique après 30 min sans activité. */
+const SCAN = { server: null, token: '', port: 0, url: '', urls: [], idle: null, phones: 0 };
+function lanAddresses(){
+  const out = [];
+  for (const [name, list] of Object.entries(os.networkInterfaces())) for (const a of list || []) {
+    if (a.family !== 'IPv4' && a.family !== 4) continue;
+    if (a.internal || a.address.startsWith('169.254.')) continue;
+    const virt = /vmware|virtualbox|vethernet|hyper-v|docker|wsl|loopback|tailscale|zerotier|vpn/i.test(name);
+    const priv = /^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(a.address);
+    out.push({ ip: a.address, score: (priv ? 2 : 0) + (virt ? -3 : 0) + (/^192\.168\./.test(a.address) ? 1 : 0) + (/wi-?fi|wlan|sans fil/i.test(name) ? 1 : 0) });
+  }
+  return out.sort((a, b) => b.score - a.score).map(a => a.ip);
+}
+const scanSend = (ch, d) => { try { if (win) win.webContents.send(ch, d); } catch {} };
+function scanTouch(){ clearTimeout(SCAN.idle); SCAN.idle = setTimeout(scanStop, 30 * 60 * 1000); }
+function scanStop(){
+  clearTimeout(SCAN.idle);
+  if (SCAN.server) { try { SCAN.server.close(); SCAN.server.closeAllConnections && SCAN.server.closeAllConnections(); } catch {} }
+  SCAN.server = null; SCAN.token = ''; SCAN.url = '';
+  scanSend('scan-event', { type: 'stopped' });
+}
+function scanStart(){
+  if (SCAN.server) { scanTouch(); return Promise.resolve(); }
+  const http = require('http'), crypto = require('crypto');
+  SCAN.token = crypto.randomBytes(12).toString('hex');
+  const page = fs.readFileSync(path.join(__dirname, 'scan.html'));
+  const batches = new Map();
+  const server = http.createServer((req, res) => {
+    const base = '/s/' + SCAN.token;
+    const u = (req.url || '').split('?')[0];
+    const send = (code, body, type = 'application/json') => { res.writeHead(code, { 'Content-Type': type, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); res.end(body); };
+    if (!SCAN.token || (u !== base && !u.startsWith(base + '/'))) return send(404, 'Introuvable', 'text/plain; charset=utf-8');
+    scanTouch();
+    if (req.method === 'GET' && (u === base || u === base + '/')) return send(200, page, 'text/html; charset=utf-8');
+    if (req.method === 'POST' && u === base + '/hello') {
+      SCAN.phones++; scanSend('scan-event', { type: 'phone' });
+      return send(200, JSON.stringify({ name: os.hostname() }));
+    }
+    if (req.method === 'POST' && u === base + '/page') {
+      const batch = String(req.headers['x-batch'] || '').slice(0, 40), idx = parseInt(req.headers['x-index']), total = parseInt(req.headers['x-total']);
+      if (!batch || !(idx >= 0) || !(total > 0) || total > 300 || idx >= total) return send(400, '{"ok":false}');
+      const chunks = []; let size = 0, tooBig = false;
+      req.on('data', c => { size += c.length; if (size > 30 * 1024 * 1024) { tooBig = true; req.destroy(); } else chunks.push(c); });
+      req.on('end', () => {
+        if (tooBig) return;
+        const buf = Buffer.concat(chunks);
+        if (buf.length < 4 || buf[0] !== 0xFF || buf[1] !== 0xD8) return send(415, '{"ok":false}');   // JPEG uniquement
+        let b = batches.get(batch); if (!b) { b = { pages: [], total, at: Date.now() }; batches.set(batch, b); }
+        b.pages[idx] = buf;
+        const got = b.pages.filter(Boolean).length;
+        scanSend('scan-event', { type: 'progress', got, total });
+        if (got === total) { batches.delete(batch); scanSend('scan-pages', { pages: b.pages.map(x => new Uint8Array(x)) }); }
+        send(200, '{"ok":true}');
+      });
+      return;
+    }
+    send(404, 'Introuvable', 'text/plain; charset=utf-8');
+  });
+  return new Promise((resolve, reject) => {
+    server.on('error', reject);
+    server.listen(0, '0.0.0.0', () => {
+      SCAN.server = server; SCAN.port = server.address().port;
+      SCAN.urls = lanAddresses().map(ip => `http://${ip}:${SCAN.port}/s/${SCAN.token}`);
+      SCAN.url = SCAN.urls[0] || ''; scanTouch(); resolve();
+    });
+  });
+}
+ipcMain.handle('scan-start', async e => {
+  if (!fromApp(e)) return null;
+  try { await scanStart(); } catch (err) { return { ok: false, error: String(err && err.message || err) }; }
+  if (!SCAN.url) { scanStop(); return { ok: false, error: 'Aucun réseau Wi-Fi ou local trouvé sur cet ordinateur.' }; }
+  let qr = '';
+  try { qr = await require('qrcode').toDataURL(SCAN.url, { margin: 1, width: 520, errorCorrectionLevel: 'M', color: { dark: '#111111', light: '#ffffff' } }); } catch {}
+  return { ok: true, url: SCAN.url, urls: SCAN.urls, qr };
+});
+ipcMain.handle('scan-stop', e => { if (fromApp(e)) scanStop(); return true; });
+app.on('before-quit', () => { if (SCAN.server) scanStop(); });
+
 /* ---------- Mises à jour (GitHub : Fefe-Kurylen/Pyramid) ----------
+
    Version installée (Setup) : téléchargement en arrière-plan, puis bouton « Mettre à jour » (redémarre et installe).
    Version portable et Mac : la nouvelle version est signalée, le bouton ouvre la page de téléchargement.
    Version Microsoft Store : rien ici, c'est le Store qui met à jour. */

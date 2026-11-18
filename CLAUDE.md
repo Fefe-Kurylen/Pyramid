@@ -10,8 +10,9 @@ Dossier du projet sur le PC : `C:\Users\felix\Desktop\Claude\Pyramid` (code dans
 - `web/index.html` — **source principale** (≈3 100 lignes, tout dans un seul fichier : CSS + HTML + une IIFE JS).
   C'est le seul fichier à modifier pour l'interface et les fonctions.
 - `windows/` — l'appli Electron 33
-  - `main.js` — processus principal (fenêtre, titleBarOverlay, IPC : save, open-file, titlebar, ready, html2pdf, printers, print, tsa, update-state/check/install)
-  - `preload.js` — expose `window.native` (save, onOpenFile, setTitleBar, ready, html2pdf, print, printers, tsa, onUpdate, updateState, checkUpdate, installUpdate, platform)
+  - `main.js` — processus principal (fenêtre, titleBarOverlay, IPC : save, open-file, titlebar, ready, html2pdf, printers, print, tsa, update-state/check/install, scan-start/stop)
+  - `scan.html` — page du téléphone pour « Scanner avec le téléphone » (photo, détection des bords, redressement, filtres Document/Couleur/Gris, envoi)
+  - `preload.js` — expose `window.native` (save, onOpenFile, setTitleBar, ready, html2pdf, print, printers, tsa, onUpdate, updateState, checkUpdate, installUpdate, scanStart, scanStop, onScan, platform)
   - `make-app.py` — transforme `web/index.html` en `windows/app/index.html` (retire les CDN, ajoute CSP + fonts.css, chemins locaux des libs)
   - `make-fonts.py` — génère `app/fonts.css` + `app/fonts/` (woff2 latin + latin-ext) depuis les paquets @fontsource
   - `afterPack.js` — met l'icône et les infos de version dans l'exe (resedit)
@@ -29,7 +30,7 @@ Dossier du projet sur le PC : `C:\Users\felix\Desktop\Claude\Pyramid` (code dans
 - `store/` — fiche Microsoft Store prête à copier (`FICHE-STORE.md`), captures 1920×1080, rapport WACK ; `store/apple/` : fiche App Store (`FICHE-APPSTORE.md`), captures iPhone 6,9" et iPad 13" (`captures.py`)
 - `PRIVACY.md` — politique de confidentialité publique (URL demandée par le Store)
 - `tests/` — `mobile.py` (37 tests, dont l'abonnement iPhone en écran de téléphone : Chromium Android + WebKit iPhone, faux Capacitor), `full.py` (59 tests web, Playwright Python), `e6.js` (détection du texte dans Electron),
-  `e7.js` / `e9.js` (molette + impression), `e16.js` (bouton Mise à jour), `tstart.js` (temps de démarrage), `docs/` (PDF de test).
+  `e7.js` / `e9.js` (molette + impression), `e16.js` (bouton Mise à jour), `e17.js` + `e17_phone.py` (scanner avec le téléphone : Android + iPhone), `tstart.js` (temps de démarrage), `docs/` (PDF de test).
   Les chemins dans les tests pointent encore vers l'ancien espace Linux (`/home/claude/...`, `/tmp/t/...`) : à adapter.
 
 ## 🔁 Synchronisation
@@ -67,7 +68,7 @@ Installation actuelle sur le PC : `C:\Users\felix\AppData\Local\Programs\Pyramid
 - **Publier une nouvelle version** : augmenter `version` dans `windows/package.json` et pousser sur `main`. Le workflow `.github/workflows/release.yml` fabrique Setup + portable + `latest.yml` et les publie sous l'étiquette `v<version>` (onglet Releases), puis **essaie la vraie chaîne** : une 0.0.1 installée doit trouver, télécharger et installer la nouvelle version. Si la version est déjà publiée, rien n'est refait.
 - Les applis installées **avant la 1.4.0** n'ont pas de bouton : installer une fois `Pyramid-PDF-Installation-1.4.0.exe` (ou plus récent).
 - Microsoft Store : en parallèle, **version 1.3.0 en ligne depuis le 18/11/2026** (paquet 1.4.0 prêt dans `Microsoft Store\` sur le PC pour la mise à jour) (fiche en français, runFullTrust justifié, politique de confidentialité = URL GitHub de PRIVACY.md). Identité Store dans `build.appx` de `windows/package.json` : `Kurylen.PyramidPDF`, `CN=B85CD3FF-A422-425E-9A54-A6E74180E94E`, éditeur `Kurylen` ; logos dans `windows/build/appx/`. Paquet `.appx` : artifacts du workflow `windows-store.yml`, puis Partner Center → nouvelle soumission → Packages.
-- Version actuelle : 1.4.0 sur Windows (bouton de mise à jour), iPhone et Android ; 1.3.0 sur Mac. Le dossier de données reste `%APPDATA%\Pyramid` (`app.setPath('userData', …)` dans main.js) pour garder les réglages.
+- Version actuelle : 1.4.1 sur Windows (scanner avec le téléphone), 1.4.0 sur iPhone et Android ; 1.3.0 sur Mac. Le dossier de données reste `%APPDATA%\Pyramid` (`app.setPath('userData', …)` dans main.js) pour garder les réglages.
 
 ## 🍎 Apple (App Store + Mac)
 - Compte Apple Developer actif (Félix = titulaire du compte). Clé App Store Connect « GitHub Pyramid » (Admin), ID de clé `R3CB57DAX3` ; fichier `.p8` gardé dans `Clés-Apple (à garder secret)` sur le PC (**jamais dans le dépôt**), copie chiffrée dans les secrets GitHub.
@@ -97,6 +98,7 @@ Installation actuelle sur le PC : `C:\Users\felix\AppData\Local\Programs\Pyramid
 - **Images d'origine** : `getImgs(p)` lit la liste d'opérations pdf.js (save/restore/transform/paintImageXObject…) pour trouver les images de la page (hors images > 85 % de la page, ex. scans) ; contours en pointillés en modes Modifier/Sélection, survol surligné. Au clic ou glisser, `grabImg()` découpe l'image sur le rendu haute résolution, pose un cache `wo` de la couleur du fond (`oimg` = clé de l'image) et une annotation `img` déplaçable / redimensionnable / supprimable (Suppr ou ×). Les caches `wo` liés à une image ne sont pas sélectionnables.
 - **Repères d'alignement** : pendant un déplacement (`move`, `tmove`), `snapGuides()` compare les bords et centres de l'élément avec les autres éléments, les lignes de texte (y compris la ligne de base), les images et le centre de la page ; aimantation à 6 px, lignes roses (pointillées pour le centre de page), Alt pour désactiver.
 - **Molette** : en lecture elle fait défiler (Ctrl + molette = zoom) ; en mode Modifier elle zoome (ou défile selon le réglage).
+- **Scanner avec le téléphone** (ordinateur, depuis la 1.4.1) : bouton `#scanBtn` (icône téléphone, à côté du +) et `#scanBig` sur l'accueil → `scanStart` ouvre un serveur HTTP local (port libre, `0.0.0.0`, code secret aléatoire dans l'adresse, arrêt après 30 min sans activité) et affiche un QR code (paquet `qrcode`). Le téléphone (même Wi-Fi, simple navigateur, aucune appli) ouvre `scan.html` : photo ou galerie, détection automatique de la feuille (Otsu + zone claire), 4 coins ajustables, redressement (homographie), filtres, puis envoi page par page (JPEG, `POST /page`). L'ordinateur assemble les pages en PDF (pdf-lib) et l'ouvre dans un nouvel onglet « Scan JJ-MM-AAAA HHhMM ». Windows peut demander d'autoriser Pyramid PDF dans le pare-feu (réseaux privés) la première fois.
 - **Débogage** : variable d'environnement `PYR_DEBUG=1` → `window.__pyr` (S, getLines, cur, TABS, refineFont, hiRes…).
 
 ## ✅ État actuel (17/11/2026)

@@ -1,6 +1,6 @@
 {
   "name": "pyramid",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "Pyramid PDF — éditeur PDF",
   "main": "main.js",
   "scripts": {
@@ -88,6 +88,7 @@
     "files": [
       "main.js",
       "preload.js",
+      "scan.html",
       "app/**/*"
     ],
     "asar": true,
@@ -192,6 +193,7 @@
     }
   },
   "dependencies": {
-    "electron-updater": "^6.8.11"
+    "electron-updater": "^6.8.11",
+    "qrcode": "^1.5.4"
   }
 }

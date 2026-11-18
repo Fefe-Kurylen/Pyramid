@@ -371,6 +371,14 @@ html:not(.reading) #reader,html:not(.reading) #rbar{display:none!important}
 #paywall .pw-err{color:#e5484d;font-size:13.5px;min-height:1em}
 #paywall .pw-legal{color:var(--faint);font-size:11.5px;line-height:1.45}
 #paywall .pw-legal a{color:var(--muted)}
+.scanqr{display:grid;grid-template-columns:auto 1fr;gap:18px;align-items:center;margin:6px 0 4px}
+.scanqr img{width:200px;height:200px;border-radius:12px;background:#fff;padding:8px;image-rendering:pixelated}
+.scanqr ol{margin:0;padding-left:20px;display:grid;gap:7px;font-size:14px}
+.scanst{display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--muted);margin-top:12px;min-height:20px}
+.scanst i{width:9px;height:9px;border-radius:50%;background:var(--muted);flex:none}
+.scanst.on i{background:#3fb27f;box-shadow:0 0 0 4px rgba(63,178,127,.18)}
+.scanurl{font:12px ui-monospace,Consolas,monospace;color:var(--faint);word-break:break-all;margin-top:6px;user-select:text}
+@media (max-width:560px){ .scanqr{grid-template-columns:1fr;justify-items:center} }
 .updrow{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .updrow [data-uver]{font-weight:600;font-variant-numeric:tabular-nums}
 @media (max-width:760px){ .prt{flex-direction:column;height:auto} .prt .ps{width:auto;border-left:0} .prt .pvs{max-height:40vh} }
@@ -415,6 +423,7 @@ html:not(.reading) #reader,html:not(.reading) #rbar{display:none!important}
   <div class="logo"><div class="mark" data-ic="pyramid"></div><span class="hide-m" id="brand">Pyramid PDF</span></div>
   <div id="tabs"></div>
   <button class="ibtn newtab" id="openBtn" title="Ouvrir dans un nouvel onglet (Ctrl+O)" data-ic="plus"></button>
+  <button class="ibtn hidden" id="scanBtn" title="Scanner avec le téléphone" data-ic="phone"></button>
   <div class="hsep"></div>
   <button class="ibtn" id="undo" title="Annuler (Ctrl+Z)" data-ic="undo" disabled></button>
   <button class="ibtn" id="redo" title="Rétablir (Ctrl+Y)" data-ic="redo" disabled></button>
@@ -433,6 +442,7 @@ html:not(.reading) #reader,html:not(.reading) #rbar{display:none!important}
     <h1>Pyramid PDF</h1>
     <p>Glisse un ou plusieurs fichiers ici, ou choisis-les.<br>PDF · images (JPG, PNG, TIFF…) · Word · Excel · texte<br>Tout reste sur ton appareil 🔒</p>
     <button class="btn primary" id="openBig" data-ic="folder" style="height:44px;padding:0 22px">Ouvrir un fichier</button>
+    <button class="btn ghost hidden" id="scanBig" data-ic="phone" style="height:44px;padding:0 18px;margin-left:6px">Scanner avec le téléphone</button>
     <div class="feats"><span>✏️ Modifier le texte</span><span>✍️ Ajouter du texte</span><span>🖊️ Dessin</span><span>🖍️ Surligner</span><span>✒️ Signature</span><span>🔏 Certificat</span><span>🖼️ Images</span><span>🔄 Pivoter</span><span>🧩 Fusionner</span><span>✂️ Extraire</span></div>
   </div>
 </div>
@@ -534,6 +544,7 @@ const ICON = {
   folder:'<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
   upload:'<path d="M12 16V4m0 0-4 4m4-4 4 4M5 20h14"/>',
   plus:'<path d="M12 5v14M5 12h14"/>',
+  phone:'<rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M9 7.5h6M9 11h6M9 14.5h3.5M11 18.5h2"/>',
   download:'<path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/>',
   cursor:'<path d="M5 3l14 7-6.2 1.8L11 18z"/>',
   text:'<path d="M5 7V5h14v2M12 5v14M9 19h6"/>',
@@ -3554,6 +3565,63 @@ if (window.native && window.native.sub){
   document.addEventListener('visibilitychange', () => { if (!document.hidden) subCheck(); });
   $('#heartBtn').style.display = 'none';   // pas de dons dans l'appli iPhone (règles de l'App Store)
   subCheck();
+}
+
+/* ================= Scanner avec le téléphone (ordinateur) =================
+   Le processus principal ouvre un petit serveur local ; le téléphone scanne le QR code (même Wi-Fi),
+   photographie et redresse les pages (windows/scan.html), puis les envoie : elles s'ouvrent ici en un PDF. */
+const SCANUI = { open: false, root: null, status: null };
+function scanStatus(txt, on){ SCANUI.status = { txt, on }; const el = SCANUI.root && SCANUI.root.querySelector('.scanst');
+  if (el){ el.classList.toggle('on', !!on); el.querySelector('span').textContent = txt; } }
+async function scanPagesToPdf(pages){
+  const doc = await PDFLib.PDFDocument.create();
+  for (const b of pages){
+    const jpg = await doc.embedJpg(b);
+    const w = 595.28, h = w * jpg.height / jpg.width;
+    doc.addPage([w, h]).drawImage(jpg, { x: 0, y: 0, width: w, height: h });
+  }
+  return new Uint8Array(await doc.save());
+}
+async function openScanner(){
+  if (SCANUI.open) return;
+  const r = await window.native.scanStart().catch(e => ({ ok: false, error: String(e) }));
+  if (!r || !r.ok) return toast('⚠️ Scanner indisponible : ' + ((r && r.error) || 'erreur'));
+  SCANUI.open = true;
+  await modal(`<h2>📱 Scanner avec le téléphone</h2>
+    <div class="scanqr">${r.qr ? `<img src="${r.qr}" alt="QR code">` : ''}
+      <ol><li>Connecte le téléphone au <b>même Wi-Fi</b> que cet ordinateur.</li>
+      <li>Ouvre l'<b>appareil photo</b> et vise ce QR code, puis touche le lien.</li>
+      <li>Photographie tes pages et touche <b>« Envoyer à l'ordinateur »</b> : elles s'ouvrent ici en PDF.</li></ol></div>
+    <div class="scanst"><i></i><span>En attente du téléphone…</span></div>
+    <div class="scanurl">${esc(r.url)}</div>
+    <div class="row"><button class="btn ghost" data-x>Fermer</button></div>`,
+    (c, close) => {
+      SCANUI.root = c;
+      if (SCANUI.status && SCANUI.status.on) scanStatus(SCANUI.status.txt, true);
+      c.querySelector('[data-x]').onclick = () => close(null);
+    });
+  SCANUI.open = false; SCANUI.root = null;
+}
+if (window.native && window.native.scanStart){
+  $('#scanBtn').classList.remove('hidden'); $('#scanBig').classList.remove('hidden');
+  $('#scanBtn').onclick = $('#scanBig').onclick = openScanner;
+  window.native.onScan(async ev => {
+    if (ev.type === 'phone') scanStatus('📱 Téléphone connecté', true);
+    else if (ev.type === 'progress') scanStatus(`📥 Réception… ${ev.got} / ${ev.total} page${ev.total > 1 ? 's' : ''}`, true);
+    else if (ev.type === 'stopped') scanStatus('Scanner arrêté', false);
+    else if (ev.type === 'pages'){
+      try{
+        busy(true, 'Création du PDF…');
+        const d = new Date(), z = n => String(n).padStart(2, '0');
+        const name = `Scan ${z(d.getDate())}-${z(d.getMonth() + 1)}-${d.getFullYear()} ${z(d.getHours())}h${z(d.getMinutes())}.pdf`;
+        const bytes = await scanPagesToPdf(ev.pages);
+        busy(false);
+        await openFiles([new File([bytes], name, { type: 'application/pdf' })], false);
+        scanStatus(`✅ ${ev.pages.length} page${ev.pages.length > 1 ? 's' : ''} reçue${ev.pages.length > 1 ? 's' : ''} — prêt pour le scan suivant`, true);
+        toast(`📄 Scan reçu : ${ev.pages.length} page${ev.pages.length > 1 ? 's' : ''}`);
+      } catch(e){ busy(false); toast('⚠️ Scan reçu mais illisible'); }
+    }
+  });
 }
 
 /* ================= Mises à jour (bouton en haut) ================= */
