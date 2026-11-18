@@ -19,6 +19,12 @@ Déplace, agrandis ou supprime les images du document, ajoute les tiennes. Des l
 ✍️ SIGNATURE ÉLECTRONIQUE HORODATÉE
 Signe en un clic depuis le mode lecture : dessine, tape ou importe ta signature et pose-la où tu veux. Ajoute une signature numérique avec horodatage officiel (RFC 3161, DigiCert, Sectigo ou FreeTSA) : toute modification ultérieure du PDF est détectée.
 
+📱 SCANNER AVEC TON TÉLÉPHONE
+Scanne le QR code avec ton téléphone (même Wi-Fi, aucune appli à installer), photographie tes pages : elles sont détectées, redressées, nettoyées (papier blanc, ombres effacées) et arrivent directement sur l'ordinateur en un seul PDF.
+
+🔎 TEXTE DES DOCUMENTS SCANNÉS
+Les pages scannées sont lues automatiquement (reconnaissance du texte en français, hors ligne) : touche une ligne pour la corriger, comme dans un PDF normal.
+
 📄 PAGES
 Ajoute, supprime, pivote, réordonne et duplique les pages. Importe d'autres PDF, des images, des documents Word, des tableaux Excel, des fichiers texte ou TIFF.
 
@@ -34,6 +40,8 @@ Aucun compte, aucune publicité, aucune collecte de données : tes documents res
 ## ⭐ Fonctionnalités (une par ligne)
 Modification du texte d'origine avec détection de la police
 Signature manuscrite et signature électronique horodatée
+Scanner avec le téléphone, pages redressées et nettoyées
+Reconnaissance du texte des pages scannées (OCR hors ligne)
 Déplacement et suppression des images du document
 Lignes d'alignement et aimantation
 Ajout, suppression, rotation et réorganisation des pages
@@ -52,6 +60,9 @@ signature électronique
 signer PDF
 fiche de paie
 facture
+
+## 🆕 Notes de version (1.4.3)
+Nouveau : scanne tes documents avec ton téléphone (QR code) et reçois-les en PDF sur l'ordinateur. Les pages scannées sont lues automatiquement : leur texte se modifie comme un PDF normal. Impression à la taille réelle, icône plus nette dans la barre des tâches, corrections.
 
 ## 🆕 Notes de version (1.3.0)
 Première version sur le Microsoft Store : modification du texte d'origine, signature horodatée, images déplaçables, lignes d'alignement, impression avec aperçu.
