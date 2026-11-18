@@ -309,7 +309,7 @@ while($true){
 Write-Output ('DONE ' + $n)
 } catch {
   $ex = $_.Exception; while($ex.InnerException){ $ex = $ex.InnerException }
-  Write-Output ('ERR ' + ($ex.Message -replace '\s+', ' '))
+  Write-Output ('ERR ' + ($ex.Message -replace '\\s+', ' '))
   exit 1
 }`;
 

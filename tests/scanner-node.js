@@ -30,7 +30,7 @@ const sc = require(path.join(__dirname, '..', 'windows', 'scanner.js'));
     require(path.join(__dirname, '..', 'windows', 'scanner.js'));
     const DEV = sc._dev; if (DEV) DEV.set(fake, { id: fake, kind: 'wia', name: 'X', wiaId: fake.slice(4) });
     let e2 = ''; try { await sc.scan(fake, { source: 'platen' }, () => {}); } catch (e) { e2 = e.message; }
-    check('WIA : erreur propre pour un scanner absent', /introuvable|éteint|WIA|classe|class|0x80/i.test(e2), e2);
+    check('WIA : erreur propre pour un scanner absent', /^Scanner introuvable|classe|class/i.test(e2), e2);
   }
   console.log(ok ? 'RÉSULTAT OK' : 'RÉSULTAT ÉCHEC');
   process.exit(ok ? 0 : 1);
