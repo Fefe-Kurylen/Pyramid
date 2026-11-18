@@ -223,6 +223,39 @@ ipcMain.handle('scan-start', async e => {
 ipcMain.handle('scan-stop', e => { if (fromApp(e)) scanStop(); return true; });
 app.on('before-quit', () => { if (SCAN.server) scanStop(); });
 
+/* ---------- Reconnaissance du texte des pages scannées (OCR, hors ligne) ----------
+   Tesseract (modèle français inclus dans ocr/) tourne dans un fil séparé du processus principal ;
+   la fenêtre envoie l'image de la page rendue en haute définition et reçoit les lignes avec leurs positions. */
+let ocrWorker = null, ocrQueue = Promise.resolve();
+const unpacked = p => p.replace(/app\.asar([\\/])/, 'app.asar.unpacked$1');
+async function getOcr(){
+  if (ocrWorker) return ocrWorker;
+  const T = require('tesseract.js');
+  const wp = unpacked(path.join(path.dirname(require.resolve('tesseract.js')), 'worker-script', 'node', 'index.js'));
+  ocrWorker = await T.createWorker('fra', T.OEM.LSTM_ONLY, {
+    langPath: unpacked(path.join(__dirname, 'ocr')), cachePath: path.join(app.getPath('userData'), 'ocr-cache'),
+    gzip: true, workerPath: wp, logger: () => {}, errorHandler: () => {}
+  });
+  await ocrWorker.setParameters({ preserve_interword_spaces: '1', user_defined_dpi: '300' });
+  return ocrWorker;
+}
+ipcMain.handle('ocr', (e, img) => {
+  if (!fromApp(e)) return null;
+  const job = ocrQueue.then(async () => {
+    const w = await getOcr();
+    const { data } = await w.recognize(Buffer.from(img), {}, { blocks: true, text: false });
+    const lines = [];
+    for (const b of data.blocks || []) for (const par of b.paragraphs || []) for (const l of par.lines || []) {
+      const words = (l.words || []).filter(wd => wd.text && wd.text.trim()).map(wd => ({ t: wd.text, c: wd.confidence, b: wd.bbox, bold: !!wd.is_bold }));
+      if (words.length) lines.push({ conf: l.confidence, bbox: l.bbox, base: l.baseline, words });
+    }
+    return { lines };
+  });
+  ocrQueue = job.catch(() => {});
+  return job.catch(err => ({ error: String(err && err.message || err) }));
+});
+app.on('before-quit', () => { if (ocrWorker) { ocrWorker.terminate().catch(() => {}); ocrWorker = null; } });
+
 /* ---------- Mises à jour (GitHub : Fefe-Kurylen/Pyramid) ----------
 
    Version installée (Setup) : téléchargement en arrière-plan, puis bouton « Mettre à jour » (redémarre et installe).

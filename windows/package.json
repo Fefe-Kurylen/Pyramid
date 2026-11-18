@@ -1,6 +1,6 @@
 {
   "name": "pyramid",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "description": "Pyramid PDF — éditeur PDF",
   "main": "main.js",
   "scripts": {
@@ -89,6 +89,7 @@
       "main.js",
       "preload.js",
       "scan.html",
+      "ocr/**/*",
       "app/**/*"
     ],
     "asar": true,
@@ -190,10 +191,27 @@
       ],
       "addAutoLaunchExtension": false,
       "artifactName": "Pyramid-PDF-Store-${version}.${ext}"
-    }
+    },
+    "asarUnpack": [
+      "node_modules/tesseract.js/**",
+      "node_modules/bmp-js/**",
+      "node_modules/idb-keyval/**",
+      "node_modules/is-url/**",
+      "node_modules/node-fetch/**",
+      "node_modules/whatwg-url/**",
+      "node_modules/tr46/**",
+      "node_modules/webidl-conversions/**",
+      "node_modules/opencollective-postinstall/**",
+      "node_modules/regenerator-runtime/**",
+      "node_modules/tesseract.js-core/**",
+      "node_modules/wasm-feature-detect/**",
+      "node_modules/zlibjs/**",
+      "ocr/**"
+    ]
   },
   "dependencies": {
     "electron-updater": "^6.8.11",
-    "qrcode": "^1.5.4"
+    "qrcode": "^1.5.4",
+    "tesseract.js": "^7.0.0"
   }
 }

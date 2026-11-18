@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('native', {
   tsa: (url, body) => ipcRenderer.invoke('tsa', url, body),
   version: () => ipcRenderer.invoke('app-version'),
   onUpdate: cb => ipcRenderer.on('update', (e, o) => cb(o)),
+  ocr: bytes => ipcRenderer.invoke('ocr', bytes),
   scanStart: () => ipcRenderer.invoke('scan-start'),
   scanStop: () => ipcRenderer.invoke('scan-stop'),
   onScan: cb => { ipcRenderer.on('scan-event', (e, o) => cb(o)); ipcRenderer.on('scan-pages', (e, o) => cb({ type: 'pages', pages: o.pages })); },

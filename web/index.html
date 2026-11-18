@@ -1778,10 +1778,58 @@ function getLines(p){
       L.desc = st.descent < 0 && st.descent > -0.6 ? st.descent : -0.22;
       L.chars = chars[L.font]; L.st = st; L.fi = fontInfo(pg, L.font, st);
     }
+    // Page scannée (aucun texte dans le PDF) : reconnaissance du texte sur l'image (OCR, ordinateur)
+    if (!lines.length && window.native && window.native.ocr) return await ocrLines(p, pg);
     return lines;
   })();
   prom.catch(() => lineCache.delete(key));
   lineCache.set(key, prom); return prom;
+}
+/* ---------- Pages scannées : OCR (Tesseract, modèle français, hors ligne, dans le processus principal) ---------- */
+async function ocrLines(p, pg){
+  busy(true, '🔎 Page scannée : reconnaissance du texte…');
+  try{
+    const vp1 = pg.getViewport({ scale:1, rotation: rotOf(p) });
+    const k = Math.min(300/72, 4200 / Math.max(vp1.width, vp1.height));
+    const vp = pg.getViewport({ scale:k, rotation: rotOf(p) });
+    const c = document.createElement('canvas'); c.width = Math.round(vp.width); c.height = Math.round(vp.height);
+    const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height);
+    await pg.render({ canvasContext:x, viewport:vp }).promise;
+    const blob = await toBlob(c, 'image/png'); c.width = c.height = 0;
+    const r = await window.native.ocr(new Uint8Array(await blob.arrayBuffer()));
+    if (!r || r.error) throw new Error(r ? r.error : 'OCR');
+    const out = [], fontKey = '__ocr' + p.id, all = [];
+    const ASC = /[A-ZÀ-Ýbdfhklt0-9ÀÉÈ]/;
+    for (const l of r.lines){
+      const ws = l.words.slice().sort((u, v) => u.b.x0 - v.b.x0);
+      const bl = l.base && l.base.x1 > l.base.x0 ? l.base : { x0: l.bbox.x0, y0: l.bbox.y1, x1: l.bbox.x1, y1: l.bbox.y1 };
+      const slope = (bl.y1 - bl.y0) / ((bl.x1 - bl.x0) || 1), at = X => bl.y0 + (X - bl.x0) * slope;
+      const hs = ws.filter(w => ASC.test(w.t)).map(w => at((w.b.x0 + w.b.x1) / 2) - w.b.y0).filter(h => h > 2).sort((a, b) => a - b);
+      const fsPx = hs.length ? hs[hs.length >> 1] / 0.72 : (l.bbox.y1 - l.bbox.y0) * 0.78;
+      if (!(fsPx > 3)) continue;
+      const segs = []; let cur = null;
+      for (const w of ws){
+        if (cur && w.b.x0 - cur.x1 < fsPx * 1.6) { cur.words.push(w); cur.x1 = w.b.x1; }
+        else { cur = { words:[w], x0:w.b.x0, x1:w.b.x1 }; segs.push(cur); }
+      }
+      for (const g of segs){
+        const str = g.words.map(w => w.t).join(' ').trim();
+        const conf = g.words.reduce((t, w) => t + (w.c || 0), 0) / g.words.length;
+        if (!str || !/[\p{L}\p{N}]/u.test(str) || (conf < 40 && str.length < 3) || conf < 20) continue;
+        const ang = Math.atan(slope), X = g.x0 / k, Y = at(g.x0) / k, W = (g.x1 - g.x0) / k, fs = fsPx / k;
+        const co = Math.cos(ang), si = Math.sin(ang), bold = g.words.filter(w => w.bold).length > g.words.length / 2;
+        out.push({ x:X, y:Y, ang, fs, font:fontKey, str, lsp:false, start:X*co + Y*si, end:X*co + Y*si + W, w:W, asc:0.78, desc:-0.22, st:{}, ocr:true, conf,
+          fi:{ raw:'Texte scanné (OCR)', fam:'', bold, italic:false, eqStack:'"Arimo", sans-serif', eqName:'Arimo', emb:null, ok:true, known:false, generic:'sans-serif' } });
+        all.push(str);
+      }
+    }
+    const chars = all.join('');
+    for (const L of out) L.chars = chars;
+    if (out.length) toast(`🔎 ${out.length} ligne${out.length > 1 ? 's' : ''} reconnue${out.length > 1 ? 's' : ''} : touche un texte pour le modifier`);
+    else toast('Aucun texte trouvé sur cette page');
+    return out;
+  } catch(e){ console.warn(e); toast('⚠️ Reconnaissance du texte impossible sur cette page'); return []; }
+  finally { busy(false); }
 }
 function ensureLines(){
   const p = cur(); if (!p) return;

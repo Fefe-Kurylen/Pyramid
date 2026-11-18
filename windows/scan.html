@@ -71,7 +71,7 @@ footer .primary{width:100%}
   <div id="stage"><canvas id="cv"></canvas><svg id="ov"></svg></div>
   <div class="bar">
     <button class="chip on" data-f="doc">📄 Document</button>
-    <button class="chip" data-f="color">🎨 Couleur</button>
+    <button class="chip" data-f="color">🖼️ Photo d'origine</button>
     <button class="chip" data-f="gray">⚫ Gris</button>
     <button class="chip" id="rot">↻ Pivoter</button>
     <button class="chip" id="full">⛶ Toute la photo</button>
@@ -233,24 +233,70 @@ function warp(im, q){
   ox.putImageData(od, 0, 0);
   return out;
 }
-/* ---------- Filtres : Document (fond blanc, texte net), Gris, Couleur (léger contraste) ---------- */
+/* ---------- Filtres ----------
+   Document : fond de feuille estimé localement (maximum par zone, donc le texte et les aplats ne le faussent pas),
+   chaque couleur est divisée par ce fond → papier blanc, ombres effacées, texte fin et couleurs conservés, sans seuil brutal.
+   Gris : pareil en niveaux de gris. Couleur : photo d'origine à peine contrastée. */
+function paperBackground(d, W, H){
+  const B = Math.max(16, Math.round(Math.max(W, H) / 36)), gw = Math.ceil(W / B), gh = Math.ceil(H / B);
+  const mx = new Float32Array(gw * gh * 3);
+  // 1) dans chaque zone : couleur d'un pixel parmi les plus clairs (95e centile de luminosité)
+  for (let gy = 0; gy < gh; gy++) for (let gx = 0; gx < gw; gx++){
+    const x0 = gx * B, y0 = gy * B, x1 = Math.min(W, x0 + B), y1 = Math.min(H, y0 + B);
+    const hist = new Uint32Array(64); let n = 0;
+    for (let y = y0; y < y1; y += 2) for (let x = x0; x < x1; x += 2){ const i = (y * W + x) * 4; hist[(d[i] * .3 + d[i+1] * .59 + d[i+2] * .11) >> 2]++; n++; }
+    let acc = 0, th = 63; for (let v = 63; v >= 0; v--){ acc += hist[v]; if (acc >= n * 0.05){ th = v; break; } }
+    let r = 0, g = 0, b = 0, m = 0;
+    for (let y = y0; y < y1; y += 2) for (let x = x0; x < x1; x += 2){ const i = (y * W + x) * 4; if (((d[i] * .3 + d[i+1] * .59 + d[i+2] * .11) >> 2) >= th){ r += d[i]; g += d[i+1]; b += d[i+2]; m++; } }
+    const o = (gy * gw + gx) * 3; mx[o] = r / m; mx[o+1] = g / m; mx[o+2] = b / m;
+  }
+  // 2) zones sans papier (aplat foncé, photo) : on garde la plus claire des zones voisines
+  const lum = o => mx[o] * .3 + mx[o+1] * .59 + mx[o+2] * .11;
+  const dil = new Float32Array(mx.length);
+  for (let gy = 0; gy < gh; gy++) for (let gx = 0; gx < gw; gx++){
+    let best = (gy * gw + gx) * 3, bl = lum(best);
+    for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++){ const yy = gy + dy, xx = gx + dx; if (yy < 0 || xx < 0 || yy >= gh || xx >= gw) continue;
+      const o = (yy * gw + xx) * 3, l = lum(o); if (l > bl * 1.0) { bl = l; best = o; } }
+    const o = (gy * gw + gx) * 3, own = lum(o);
+    // une zone nettement plus sombre que sa voisine la plus claire n'est pas du papier
+    const src = own < bl * 0.82 ? best : o;
+    dil[o] = mx[src]; dil[o+1] = mx[src+1]; dil[o+2] = mx[src+2];
+  }
+  // 3) lissage (moyenne 3×3) puis agrandissement doux
+  const sm = new Float32Array(mx.length);
+  for (let gy = 0; gy < gh; gy++) for (let gx = 0; gx < gw; gx++) for (let c = 0; c < 3; c++){
+    let t = 0, n = 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++){ const yy = gy + dy, xx = gx + dx; if (yy < 0 || xx < 0 || yy >= gh || xx >= gw) continue; t += dil[(yy * gw + xx) * 3 + c]; n++; }
+    sm[(gy * gw + gx) * 3 + c] = t / n;
+  }
+  const t = document.createElement('canvas'); t.width = gw; t.height = gh;
+  const tx = t.getContext('2d'), tid = tx.createImageData(gw, gh);
+  for (let i = 0; i < gw * gh; i++){ tid.data[i*4] = sm[i*3]; tid.data[i*4+1] = sm[i*3+1]; tid.data[i*4+2] = sm[i*3+2]; tid.data[i*4+3] = 255; }
+  tx.putImageData(tid, 0, 0);
+  const big = document.createElement('canvas'); big.width = W; big.height = H;
+  const bx = big.getContext('2d'); bx.imageSmoothingEnabled = true; bx.imageSmoothingQuality = 'high';
+  bx.drawImage(t, 0, 0, gw, gh, -B / 2, -B / 2, gw * B, gh * B);
+  return bx.getImageData(0, 0, W, H).data;
+}
 function applyFilter(c, f){
   const x = c.getContext('2d'), W = c.width, H = c.height, id = x.getImageData(0, 0, W, H), d = id.data;
-  if (f === 'color'){ for (let i = 0; i < d.length; i += 4) for (let k = 0; k < 3; k++) d[i+k] = Math.max(0, Math.min(255, (d[i+k] - 128) * 1.12 + 136)); x.putImageData(id, 0, 0); return; }
-  // fond estimé : image réduite puis agrandie (éclairage inégal, ombres)
-  const s = 24, t = document.createElement('canvas'); t.width = Math.max(1, W / s | 0); t.height = Math.max(1, H / s | 0);
-  const tx = t.getContext('2d'); tx.drawImage(c, 0, 0, t.width, t.height);
-  const b = document.createElement('canvas'); b.width = W; b.height = H; const bx = b.getContext('2d'); bx.imageSmoothingQuality = 'high'; bx.drawImage(t, 0, 0, W, H);
-  const bg = bx.getImageData(0, 0, W, H).data;
+  if (f === 'color'){ for (let i = 0; i < d.length; i += 4) for (let k = 0; k < 3; k++) d[i+k] = Math.max(0, Math.min(255, (d[i+k] - 128) * 1.08 + 132)); x.putImageData(id, 0, 0); return; }
+  const bg = paperBackground(d, W, H);
+  const WP = 0.90, BP = 0.12, curve = v => { v = (v - BP) / (WP - BP); return v <= 0 ? 0 : v >= 1 ? 1 : Math.pow(v, 1.15); };
   for (let i = 0; i < d.length; i += 4){
-    const g = d[i]*.3 + d[i+1]*.59 + d[i+2]*.11, gb = Math.max(40, bg[i]*.3 + bg[i+1]*.59 + bg[i+2]*.11);
-    let v = Math.min(1, g / gb);
-    v = f === 'doc' ? (v > 0.82 ? 1 : Math.pow(Math.max(0, (v - 0.25) / 0.57), 1.6)) : Math.min(1, v * 1.04);
-    d[i] = d[i+1] = d[i+2] = v * 255;
+    const r = d[i] / Math.max(30, bg[i]), g = d[i+1] / Math.max(30, bg[i+1]), b = d[i+2] / Math.max(30, bg[i+2]);
+    if (f === 'gray'){ const v = curve(r * .3 + g * .59 + b * .11) * 255; d[i] = d[i+1] = d[i+2] = v; }
+    else {
+      // Document : luminosité nettoyée, teinte d'origine gardée (encre bleue, tampon rouge, bandeau…)
+      const l = r * .3 + g * .59 + b * .11, nl = curve(l), k = l > 0.004 ? nl / l : 0;
+      const sat = 1.15;
+      d[i]   = Math.max(0, Math.min(255, (nl + (r * k - nl) * sat) * 255));
+      d[i+1] = Math.max(0, Math.min(255, (nl + (g * k - nl) * sat) * 255));
+      d[i+2] = Math.max(0, Math.min(255, (nl + (b * k - nl) * sat) * 255));
+    }
   }
   x.putImageData(id, 0, 0);
 }
-
+window.__scan = { warp, applyFilter, detect };   // pour les tests
 /* ---------- Pages et envoi ---------- */
 function renderPages(){
   $('#pages').innerHTML = pages.map((p, i) => `<div class="pg"><img src="${p.url}"><span>${i + 1}</span><button data-del="${i}">×</button></div>`).join('');
