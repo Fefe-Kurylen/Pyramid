@@ -22,7 +22,7 @@ Dossier du projet sur le PC : `C:\Users\felix\Desktop\Claude\Pyramid` (code dans
   - `native-bridge.js` — définit `window.native` sur mobile : save (fichier + feuille de partage), printPdf, tsa, onOpenFile, version
   - `android/` — projet Android (module natif `PyramidNativePlugin.java` : impression, horodatage, « Ouvrir avec » / « Partager vers ») ; signature de publication via `keystore.properties` + `pyramid-upload.jks` (**jamais sur GitHub**, gardés dans `Clés-Android` sur le PC)
   - `ios/` — projet Xcode (Swift Package Manager ; `App/PyramidNative.swift` : impression AirPrint, horodatage, lecture des fichiers ouverts)
-- `.github/workflows/ios.yml` — vérifie sur un Mac de GitHub que l'appli iPhone se compile
+- `.github/workflows/ios.yml` — vérifie sur un Mac de GitHub que l'appli iPhone se compile et fabrique `Pyramid-PDF-iPhone-X.Y.Z.ipa` non signé (artifacts), à signer avec un identifiant Apple (Sideloadly / AltStore) ou le compte Apple Developer
 - `.github/workflows/release.yml` — publie chaque nouvelle version sur GitHub (Releases) pour le bouton « Mise à jour », puis l'essaie (0.0.1 → nouvelle version)
 - `.github/workflows/windows-store.yml` — fabrique le paquet Microsoft Store (`.appx`) sur un Windows de GitHub, le signe en test, l'installe, le lance, le désinstalle et passe la certification WACK (résultat PASS) ; le paquet est téléchargeable dans les « artifacts » du run
 - `store/` — fiche Microsoft Store prête à copier (`FICHE-STORE.md`), captures 1920×1080, rapport WACK
@@ -66,7 +66,7 @@ Installation actuelle sur le PC : `C:\Users\felix\AppData\Local\Programs\Pyramid
 - **Publier une nouvelle version** : augmenter `version` dans `windows/package.json` et pousser sur `main`. Le workflow `.github/workflows/release.yml` fabrique Setup + portable + `latest.yml` et les publie sous l'étiquette `v<version>` (onglet Releases), puis **essaie la vraie chaîne** : une 0.0.1 installée doit trouver, télécharger et installer la nouvelle version. Si la version est déjà publiée, rien n'est refait.
 - Les applis installées **avant la 1.4.0** n'ont pas de bouton : installer une fois `Pyramid-PDF-Installation-1.4.0.exe` (ou plus récent).
 - Microsoft Store : en parallèle, **version 1.3.0 soumise le 17/11/2026** (fiche en français, runFullTrust justifié, politique de confidentialité = URL GitHub de PRIVACY.md). Identité Store dans `build.appx` de `windows/package.json` : `Kurylen.PyramidPDF`, `CN=B85CD3FF-A422-425E-9A54-A6E74180E94E`, éditeur `Kurylen` ; logos dans `windows/build/appx/`. Paquet `.appx` : artifacts du workflow `windows-store.yml`, puis Partner Center → nouvelle soumission → Packages.
-- Version actuelle : 1.4.0 sur Windows (bouton de mise à jour), 1.3.0 sur Mac, iPhone, Android. Le dossier de données reste `%APPDATA%\Pyramid` (`app.setPath('userData', …)` dans main.js) pour garder les réglages.
+- Version actuelle : 1.4.0 sur Windows (bouton de mise à jour), iPhone et Android ; 1.3.0 sur Mac. Le dossier de données reste `%APPDATA%\Pyramid` (`app.setPath('userData', …)` dans main.js) pour garder les réglages.
 
 ## 🧠 Fonctionnement clé
 - **Modes** : `MODE = 'read' | 'edit'` (classe `reading` sur `<html>`). Le PDF s'ouvre en **lecteur** (pages continues,
