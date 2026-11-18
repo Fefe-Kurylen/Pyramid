@@ -62,7 +62,7 @@ Conditions d'utilisation : https://www.apple.com/legal/internet-services/itunes/
 Confidentialité : https://github.com/Fefe-Kurylen/Pyramid/blob/main/PRIVACY.md
 
 ## 🔎 Mots-clés (100 car.)
-pdf,modifier,éditer,signer,signature,annoter,formulaire,remplir,document,scanner,imprimer,texte,lecteur
+pdf,modifier,éditer,signer,signature,annoter,formulaire,remplir,document,scanner,imprimer,texte
 
 ## 💬 Notes pour la vérification Apple
 L'appli s'ouvre sur l'écran d'abonnement (essai gratuit de 14 jours, puis 0,99 €/mois). Pour tester : démarrer l'essai avec un compte Sandbox, puis ouvrir un PDF (bouton Ouvrir, ou « Ouvrir avec » depuis Fichiers), toucher « Modifier » et toucher une ligne de texte pour la modifier. Aucun compte n'est nécessaire.
