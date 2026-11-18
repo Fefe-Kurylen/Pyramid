@@ -18,7 +18,7 @@ Dossier du projet sur le PC : `C:\Users\felix\Desktop\Claude\Pyramid` (code dans
   - `make-fonts.py` — génère `app/fonts.css` + `app/fonts/` (woff2 latin + latin-ext) depuis les paquets @fontsource
   - `afterPack.js` — met l'icône et les infos de version dans l'exe (resedit)
   - `app/lib/` — pdf.js 3.11.174 (+ worker), pdf-lib 1.17.1, node-forge 1.3.1, mammoth, xlsx, pako, UTIF
-  - `build/icon.png`, `build/icon.ico`
+  - `build/icon.png`, `build/icon.ico` — icône **pleine taille, sans marge** (sinon elle paraît plus petite que les autres dans la barre des tâches) ; ICO 16→256 px ; mêmes réglages pour `build/appx/Square44x44Logo*` et `StoreLogo*`
 - `mobile/` — appli iPhone + Android (Capacitor 8)
   - `make-mobile.py` — construit `www/` à partir de `windows/app` (libs et polices locales) + `native-bridge.js`
   - `native-bridge.js` — définit `window.native` sur mobile : save (fichier + feuille de partage), printPdf, tsa, onOpenFile, version, `sub` (iPhone : status, buy, restore, manage, onChange)
@@ -69,7 +69,7 @@ Installation actuelle sur le PC : `C:\Users\felix\AppData\Local\Programs\Pyramid
 - **Publier une nouvelle version** : augmenter `version` dans `windows/package.json` et pousser sur `main`. Le workflow `.github/workflows/release.yml` fabrique Setup + portable + `latest.yml` et les publie sous l'étiquette `v<version>` (onglet Releases), puis **essaie la vraie chaîne** : une 0.0.1 installée doit trouver, télécharger et installer la nouvelle version. Si la version est déjà publiée, rien n'est refait.
 - Les applis installées **avant la 1.4.0** n'ont pas de bouton : installer une fois `Pyramid-PDF-Installation-1.4.0.exe` (ou plus récent).
 - Microsoft Store : en parallèle, **version 1.3.0 en ligne depuis le 18/11/2026** (paquet 1.4.0 prêt dans `Microsoft Store\` sur le PC pour la mise à jour) (fiche en français, runFullTrust justifié, politique de confidentialité = URL GitHub de PRIVACY.md). Identité Store dans `build.appx` de `windows/package.json` : `Kurylen.PyramidPDF`, `CN=B85CD3FF-A422-425E-9A54-A6E74180E94E`, éditeur `Kurylen` ; logos dans `windows/build/appx/`. Paquet `.appx` : artifacts du workflow `windows-store.yml`, puis Partner Center → nouvelle soumission → Packages.
-- Version actuelle : 1.4.2 sur Windows (scanner avec le téléphone + OCR des pages scannées), 1.4.0 sur iPhone et Android ; 1.3.0 sur Mac. Le dossier de données reste `%APPDATA%\Pyramid` (`app.setPath('userData', …)` dans main.js) pour garder les réglages.
+- Version actuelle : 1.4.3 sur Windows (icône pleine taille dans la barre des tâches) (scanner avec le téléphone + OCR des pages scannées), 1.4.0 sur iPhone et Android ; 1.3.0 sur Mac. Le dossier de données reste `%APPDATA%\Pyramid` (`app.setPath('userData', …)` dans main.js) pour garder les réglages.
 
 ## 🍎 Apple (App Store + Mac)
 - Compte Apple Developer actif (Félix = titulaire du compte). Clé App Store Connect « GitHub Pyramid » (Admin), ID de clé `R3CB57DAX3` ; fichier `.p8` gardé dans `Clés-Apple (à garder secret)` sur le PC (**jamais dans le dépôt**), copie chiffrée dans les secrets GitHub.
