@@ -24,8 +24,8 @@
     ready: function () {},
     version: async function () { var i = await P.App.getInfo(); return i.version; }
   };
-  // iPhone / iPad : abonnement App Store (essai gratuit de 2 semaines puis mensuel)
-  if (plat === 'ios' && P.PyramidNative.subStatus) {
+  // Abonnement : iPhone / iPad (App Store) et Android (Google Play) — essai gratuit de 14 jours puis 1 € par mois
+  if ((plat === 'ios' || plat === 'android') && P.PyramidNative.subStatus) {
     window.native.sub = {
       status: function () { return P.PyramidNative.subStatus(); },
       buy: function () { return P.PyramidNative.subBuy(); },

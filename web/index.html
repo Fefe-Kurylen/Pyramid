@@ -548,10 +548,10 @@ html:not(.reading) #reader,html:not(.reading) #rbar{display:none!important}
     <li data-ic2="check">Modifier le texte d'origine, dans la même police</li>
     <li data-ic2="check">Signature électronique horodatée</li>
     <li data-ic2="check">Images, formulaires, pages, caviardage</li>
-    <li data-ic2="check">Impression AirPrint et partage</li>
+    <li data-ic2="check">Impression et partage</li>
     <li data-ic2="check">Thèmes et interface personnalisables</li>
   </ul>
-  <div class="pw-offer"><b data-pw-head>2 semaines gratuites</b><span data-pw-price>puis 0,99 € par mois · résiliable à tout moment</span></div>
+  <div class="pw-offer"><b data-pw-head>14 jours gratuits</b><span data-pw-price>puis 1,00 € par mois · résiliable à tout moment</span></div>
   <button class="pw-buy" data-pw-buy>Commencer l'essai gratuit</button>
   <div class="pw-err" data-pw-err></div>
   <button class="pw-restore" data-pw-restore>Restaurer mes achats</button>
@@ -3478,6 +3478,8 @@ $('#importBtn').onclick = () => {
   ]);
 };
 $('#heartBtn').onclick = openSupport;
+// Téléphone (iPhone, Android) : appli sur abonnement, pas de bouton « Soutenir »
+if (window.native && /^(ios|android)$/.test(window.native.platform || '')) $('#heartBtn').style.display = 'none';
 $('#editBtn').onclick = () => setMode('edit');
 $('#doneBtn').onclick = () => setMode('read');
 $('#rPrev').onclick = () => goto(S.cur - 1);
@@ -3582,11 +3584,14 @@ window.addEventListener('beforeunload', e => { saveTab(); if (TABS.some(t => t.d
 applySettings(false);
 renderTabs();
 if (/[?&]debug\b/.test(location.search)) window.__pyr = { S, getLines, cur, TABS, switchTab, embWorks, goto, embOk, startPara, openFind, zoomTo, bbox, refineFont, hiRes, sampleColorsHi };
-/* ================= Abonnement iPhone / iPad (App Store) =================
-   Essai gratuit de 2 semaines puis 0,99 €/mois, géré par Apple (StoreKit 2 dans PyramidNative.swift).
-   Sans abonnement actif, l'écran d'abonnement couvre l'appli. */
+/* ================= Abonnement téléphone (iPhone / iPad : App Store · Android : Google Play) =================
+   Essai gratuit de 14 jours puis 1 €/mois. iPhone : StoreKit 2 (PyramidNative.swift) ; Android : Google Play Billing
+   (PyramidNativePlugin.java). Sans abonnement actif, l'écran d'abonnement couvre l'appli. L'ordinateur reste gratuit. */
 const SUB = { st: null, busy: false };
-const SUB_TERMS = 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
+const SUB_AND = !!(window.native && window.native.platform === 'android');
+const SUB_STORE = SUB_AND ? { acct: 'Google Play', store: 'Google Play', manage: 'dans l’appli Play Store → ton profil → Paiements et abonnements → Abonnements' }
+  : { acct: 'Apple', store: 'App Store', manage: 'dans Réglages → votre nom → Abonnements' };
+const SUB_TERMS = SUB_AND ? 'https://play.google.com/about/play-terms/' : 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
 const SUB_PRIVACY = 'https://github.com/Fefe-Kurylen/Pyramid/blob/main/PRIVACY.md';
 const fmtDay = ms => new Date(ms).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
 function subLabel(st){
@@ -3600,16 +3605,16 @@ function subApply(st){
   const open = !(st && st.active);
   pw.classList.toggle('on', open);
   if (!open) return;
-  const price = (st && st.price) || '0,99 €', days = (st && st.trialDays) || 14;
+  const price = (st && st.price) || '1,00 €', days = (st && st.trialDays) || 14;
   const trial = !st || st.eligibleTrial !== false;
-  const len = days % 7 === 0 ? (days / 7 === 1 ? '1 semaine' : `${days / 7} semaines`) : `${days} jours`;
-  pw.querySelector('[data-pw-head]').textContent = trial ? `${len} gratuites` : 'Abonnement mensuel';
+  const len = `${days} jours`;
+  pw.querySelector('[data-pw-head]').textContent = trial ? `${days} jours gratuits` : 'Abonnement mensuel';
   pw.querySelector('[data-pw-price]').textContent = trial ? `puis ${price} par mois · résiliable à tout moment` : `${price} par mois · résiliable à tout moment`;
   pw.querySelector('[data-pw-buy]').textContent = trial ? 'Commencer l’essai gratuit' : `S’abonner — ${price}/mois`;
   pw.querySelector('[data-pw-legal]').innerHTML = `Abonnement mensuel à renouvellement automatique (${esc(price)} par mois${trial ? ` après ${esc(len)} d’essai gratuit` : ''}). `
-    + `Le paiement est débité sur votre compte Apple ${trial ? 'à la fin de l’essai' : 'à la confirmation de l’achat'}. L’abonnement se renouvelle automatiquement sauf résiliation au moins 24 h avant la fin de la période en cours, `
-    + `dans Réglages → votre nom → Abonnements.<br><a href="${SUB_TERMS}" target="_blank" rel="noopener">Conditions d’utilisation</a> · <a href="${SUB_PRIVACY}" target="_blank" rel="noopener">Confidentialité</a>`;
-  pw.querySelector('[data-pw-err]').textContent = st && st.loaded === false ? 'App Store injoignable : vérifie la connexion internet puis réessaie.' : '';
+    + `Le paiement est débité sur votre compte ${SUB_STORE.acct} ${trial ? 'à la fin de l’essai' : 'à la confirmation de l’achat'}. L’abonnement se renouvelle automatiquement sauf résiliation au moins 24 h avant la fin de la période en cours, `
+    + `${SUB_STORE.manage}.<br><a href="${SUB_TERMS}" target="_blank" rel="noopener">Conditions d’utilisation</a> · <a href="${SUB_PRIVACY}" target="_blank" rel="noopener">Confidentialité</a>`;
+  pw.querySelector('[data-pw-err]').textContent = st && st.loaded === false ? `${SUB_STORE.store} injoignable : vérifie la connexion internet puis réessaie.` : '';
 }
 async function subCheck(){
   const n = window.native && window.native.sub; if (!n) return;
@@ -3627,7 +3632,7 @@ if (window.native && window.native.sub){
     try {
       const st = await fn(); SUB.st = st; subApply(st);
       if (st.active) toast(okMsg); else if (st.pending) err.textContent = 'Achat en attente de validation (contrôle parental ?).';
-      else if (!st.cancelled && fn === window.native.sub.restore) err.textContent = 'Aucun abonnement à restaurer sur ce compte Apple.';
+      else if (!st.cancelled && fn === window.native.sub.restore) err.textContent = `Aucun abonnement à restaurer sur ce compte ${SUB_STORE.acct}.`;
     } catch (e) { err.textContent = 'Achat impossible : ' + ((e && e.message) || e); }
     b.disabled = false; SUB.busy = false;
   };
@@ -3635,7 +3640,6 @@ if (window.native && window.native.sub){
   pw.querySelector('[data-pw-restore]').onclick = () => act(window.native.sub.restore, '✅ Abonnement restauré');
   window.native.sub.onChange(st => { SUB.st = st; subApply(st); });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) subCheck(); });
-  $('#heartBtn').style.display = 'none';   // pas de dons dans l'appli iPhone (règles de l'App Store)
   subCheck();
 }
 
