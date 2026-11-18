@@ -379,6 +379,25 @@ html:not(.reading) #reader,html:not(.reading) #rbar{display:none!important}
 .scanst.on i{background:#3fb27f;box-shadow:0 0 0 4px rgba(63,178,127,.18)}
 .scanurl{font:12px ui-monospace,Consolas,monospace;color:var(--faint);word-break:break-all;margin-top:6px;user-select:text}
 @media (max-width:560px){ .scanqr{grid-template-columns:1fr;justify-items:center} }
+.dscard{width:min(560px,96vw)}
+.dsdev{display:flex;gap:8px;align-items:center}
+.dsdev select{flex:1;min-width:0}
+.dsdev .ibtn{flex:none;width:40px;height:40px}
+.dsdev .ibtn.spin svg{animation:dsspin 1s linear infinite}
+@keyframes dsspin{to{transform:rotate(360deg)}}
+.dsadd{display:flex;gap:8px;margin-top:8px}
+.dsadd .field{height:34px;font-size:13px}
+.dsadd .btn{height:34px;flex:none}
+.dsgrid{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}
+.dsgrid .seg button{min-width:0}
+.dspages{display:flex;gap:8px;overflow-x:auto;margin-top:14px;padding-bottom:4px;min-height:0}
+.dspages:empty{display:none}
+.dspg{position:relative;flex:none;width:72px;height:96px;border-radius:8px;overflow:hidden;background:#fff;border:1px solid var(--line2);display:grid;place-items:center;font-size:11px;color:#333}
+.dspg img{width:100%;height:100%;object-fit:contain}
+.dspg b{position:absolute;left:4px;bottom:3px;font-size:10.5px;background:rgba(0,0,0,.6);color:#fff;border-radius:5px;padding:0 5px}
+.dspg button{position:absolute;top:3px;right:3px;width:20px;height:20px;border-radius:50%;background:rgba(0,0,0,.65);color:#fff;font-size:13px;line-height:20px;padding:0}
+.dsrow{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap}
+@media (max-width:560px){ .dsgrid{grid-template-columns:1fr} }
 .updrow{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .updrow [data-uver]{font-weight:600;font-variant-numeric:tabular-nums}
 @media (max-width:760px){ .prt{flex-direction:column;height:auto} .prt .ps{width:auto;border-left:0} .prt .pvs{max-height:40vh} }
@@ -464,6 +483,7 @@ html:not(.reading) #reader,html:not(.reading) #rbar{display:none!important}
       <div class="sep"></div>
       <button class="ibtn" id="rFind" data-ic="search" title="Rechercher dans le document (Ctrl+F)"></button>
       <button class="ibtn" id="rPrint" data-ic="print" title="Imprimer (Ctrl+P)"></button>
+      <button class="ibtn hidden" id="rScan" data-ic="scanner" title="Numériser depuis une imprimante ou un scanner"></button>
       <div class="sep"></div>
       <button class="ibtn" id="rSign" data-ic="sign" title="Signer le document"></button>
       <button class="btn primary" id="editBtn" data-ic="edittext" title="Modifier le document (Ctrl+E)"><span>Modifier</span></button>
@@ -568,6 +588,8 @@ const ICON = {
   fit:'<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
   blank:'<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M12 11v6M9 14h6"/>',
   check:'<path d="m5 12 5 5L20 7"/>',
+  refresh:'<path d="M20 11.5A8 8 0 1 1 17.7 6"/><path d="M20 4v5h-5"/>',
+  scanner:'<path d="M4 9.5 19.5 4"/><rect x="3" y="11" width="18" height="8" rx="2"/><path d="M7 15h5M16 15h1"/>',
   print:'<path d="M7 9V3h10v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M7 14h10v7H7z"/>',
   clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   search:'<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
@@ -3670,6 +3692,168 @@ if (window.native && window.native.scanStart){
       } catch(e){ busy(false); toast('⚠️ Scan reçu mais illisible'); }
     }
   });
+}
+
+/* ================= Numériser depuis une imprimante / un scanner (ordinateur) =================
+   Le processus principal (windows/scanner.js) trouve les imprimantes multifonctions du réseau (AirScan / eSCL)
+   et les scanners installés dans Windows (WIA), lance la numérisation et renvoie les pages ; elles s'ouvrent ici en PDF. */
+const DSCAN = { list: null, busy: false };
+const dsLoad = () => { try { return JSON.parse(localStorage.getItem('pyramid-scanner')) || {}; } catch { return {}; } };
+const dsSave = o => { try { localStorage.setItem('pyramid-scanner', JSON.stringify(o)); } catch {} };
+async function dsPagesToPdf(pages){
+  const doc = await PDFLib.PDFDocument.create();
+  for (const p of pages){
+    if (p.type === 'pdf'){
+      const src = await PDFLib.PDFDocument.load(p.data, { ignoreEncryption: true });
+      for (const pg of await doc.copyPages(src, src.getPageIndices())) doc.addPage(pg);
+      continue;
+    }
+    const img = p.type === 'png' ? await doc.embedPng(p.data) : await doc.embedJpg(p.data);
+    const dpi = p.dpi > 0 ? p.dpi : 300;
+    let w = img.width / dpi * 72, h = img.height / dpi * 72;
+    if (w < 100 || w > 2000) { w = 595.28; h = w * img.height / img.width; }   // résolution inconnue : largeur A4
+    doc.addPage([w, h]).drawImage(img, { x: 0, y: 0, width: w, height: h });
+  }
+  return new Uint8Array(await doc.save());
+}
+async function openDevScan(){
+  if (DSCAN.open) return;
+  DSCAN.open = true;
+  const O = Object.assign({ dev: '', source: 'platen', color: 'color', dpi: 300, paper: 'A4' }, dsLoad());
+  const pages = [];
+  const seg = (k, opts) => `<div class="seg" data-dk="${k}">${opts.map(([v, l]) => `<button data-v="${v}" class="${String(O[k]) === String(v) ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+  await modal(`<h2>🖨️ Numériser depuis une imprimante</h2>
+    <span class="lbl">Imprimante ou scanner</span>
+    <div class="dsdev"><select class="field" data-dev><option value="">🔎 Recherche des imprimantes…</option></select>
+      <button class="ibtn" data-refresh data-ic="refresh" title="Rechercher à nouveau"></button></div>
+    <div class="dsadd"><input class="field" data-ip placeholder="Pas dans la liste ? Adresse IP de l'imprimante (ex. 192.168.1.20)"><button class="btn ghost" data-add>Ajouter</button></div>
+    <div class="dsgrid">
+      <div><span class="lbl">Source</span>${seg('source', [['platen', 'Vitre'], ['adf', 'Chargeur'], ['duplex', 'Recto verso']])}</div>
+      <div><span class="lbl">Couleur</span>${seg('color', [['color', 'Couleur'], ['gray', 'Gris'], ['bw', 'N&amp;B']])}</div>
+      <div><span class="lbl">Qualité</span>${seg('dpi', [[150, '150 ppp'], [300, '300 ppp'], [600, '600 ppp']])}</div>
+      <div><span class="lbl">Format</span>${seg('paper', [['A4', 'A4'], ['A5', 'A5'], ['Letter', 'Lettre'], ['Legal', 'Légal']])}</div>
+    </div>
+    <div class="dspages" data-pages></div>
+    <div class="scanst" data-st><i></i><span></span></div>
+    <div class="dsrow"><button class="btn ghost" data-x>Fermer</button>
+      <button class="btn ghost" data-scan data-ic="scanner"><span>Numériser</span></button>
+      <button class="btn primary" data-ok data-ic="check" disabled><span>Ouvrir en PDF</span></button></div>`,
+  (card, close) => {
+    card.classList.add('dscard');
+    const q = s => card.querySelector(s);
+    const sel = q('[data-dev]'), st = q('[data-st]'), bScan = q('[data-scan]'), bOk = q('[data-ok]'), bRef = q('[data-refresh]');
+    const status = (txt, on) => { st.classList.toggle('on', !!on); st.querySelector('span').textContent = txt || ''; };
+    const save = () => dsSave({ dev: O.dev, source: O.source, color: O.color, dpi: O.dpi, paper: O.paper });
+    let info = null;
+    const applyInfo = () => {
+      card.querySelectorAll('[data-dk="source"] button').forEach(b => { b.style.display = !info || info.sources.includes(b.dataset.v) ? '' : 'none'; });
+      card.querySelectorAll('[data-dk="color"] button').forEach(b => { b.style.display = !info || info.colors.includes(b.dataset.v) ? '' : 'none'; });
+      if (info && !info.sources.includes(O.source)) O.source = info.sources[0] || 'platen';
+      if (info && !info.colors.includes(O.color)) O.color = info.colors[0] || 'color';
+      card.querySelectorAll('[data-dk]').forEach(g => g.querySelectorAll('button').forEach(b => b.classList.toggle('on', String(O[g.dataset.dk]) === b.dataset.v)));
+    };
+    const loadInfo = async () => {
+      info = null; applyInfo();
+      if (!O.dev) return;
+      const r = await window.native.scannerInfo(O.dev).catch(() => null);
+      if (r && r.ok) { info = r; applyInfo(); status(''); }
+      else if (r) status('⚠️ ' + r.error, false);
+    };
+    const fill = list => {
+      DSCAN.list = list;
+      if (!list.length){ sel.innerHTML = '<option value="">Aucune imprimante trouvée</option>'; O.dev = ''; status('Allume l’imprimante, vérifie qu’elle est sur le même réseau, ou ajoute son adresse IP.', false); }
+      else {
+        sel.innerHTML = list.map(d => `<option value="${esc(d.id)}">${d.kind === 'escl' ? '📶' : '🖥️'} ${esc(d.name)}${d.host && d.kind === 'escl' ? ' — ' + esc(d.host) : ''}</option>`).join('');
+        if (!list.some(d => d.id === O.dev)) O.dev = list[0].id;
+        sel.value = O.dev; status('');
+      }
+      bScan.disabled = !O.dev;
+      loadInfo();
+    };
+    const search = async () => {
+      bRef.classList.add('spin'); bRef.disabled = true; bScan.disabled = true;
+      status('🔎 Recherche des imprimantes sur le réseau…', true);
+      const list = await window.native.scanners().catch(() => []);
+      bRef.classList.remove('spin'); bRef.disabled = false;
+      if (DSCAN.open) fill(list || []);
+    };
+    sel.onchange = () => { O.dev = sel.value; save(); loadInfo(); };
+    bRef.onclick = search;
+    const ip = q('[data-ip]'), bAdd = q('[data-add]');
+    const add = async () => {
+      const a = ip.value.trim(); if (!a) return ip.focus();
+      bAdd.disabled = true; status('🔎 Connexion à ' + a + '…', true);
+      const r = await window.native.scannerAdd(a).catch(e => ({ ok: false, error: String(e) }));
+      bAdd.disabled = false;
+      if (!r || !r.ok) return status('⚠️ ' + ((r && r.error) || 'Adresse injoignable'), false);
+      const list = (DSCAN.list || []).filter(d => d.id !== r.id); list.unshift(r);
+      O.dev = r.id; save(); ip.value = ''; fill(list);
+      toast('✅ ' + r.name + ' ajouté');
+    };
+    bAdd.onclick = add; ip.onkeydown = e => { if (e.key === 'Enter') add(); };
+    card.querySelectorAll('[data-dk]').forEach(g => g.onclick = e => {
+      const b = e.target.closest('button'); if (!b || DSCAN.busy) return;
+      const k = g.dataset.dk; O[k] = k === 'dpi' ? +b.dataset.v : b.dataset.v; save(); applyInfo();
+    });
+    const pgBox = q('[data-pages]');
+    const drawPages = () => {
+      pgBox.innerHTML = '';
+      pages.forEach((p, i) => {
+        const el = document.createElement('div'); el.className = 'dspg';
+        if (p.type === 'pdf') el.textContent = 'PDF';
+        else { if (!p.url) p.url = URL.createObjectURL(new Blob([p.data], { type: p.type === 'png' ? 'image/png' : 'image/jpeg' })); el.innerHTML = `<img src="${p.url}" alt="">`; }
+        el.insertAdjacentHTML('beforeend', `<b>${i + 1}</b><button title="Retirer cette page">×</button>`);
+        el.querySelector('button').onclick = () => { if (p.url) URL.revokeObjectURL(p.url); pages.splice(i, 1); drawPages(); };
+        pgBox.appendChild(el);
+      });
+      bOk.disabled = !pages.length || DSCAN.busy;
+      bOk.querySelector('span').textContent = pages.length ? `Ouvrir en PDF (${pages.length} page${pages.length > 1 ? 's' : ''})` : 'Ouvrir en PDF';
+      pgBox.scrollLeft = pgBox.scrollWidth;
+    };
+    const setBusy = on => {
+      DSCAN.busy = on;
+      bScan.querySelector('span').textContent = on ? 'Annuler' : (pages.length ? 'Numériser la suite' : 'Numériser');
+      sel.disabled = bRef.disabled = bAdd.disabled = on;
+      bOk.disabled = on || !pages.length;
+    };
+    DSCAN.onEvent = ev => { if (ev.type === 'page' && DSCAN.busy) status(`📥 Page ${ev.n} reçue…`, true); };
+    bScan.onclick = async () => {
+      if (DSCAN.busy){ window.native.scannerCancel(); status('Annulation…', true); return; }
+      if (!O.dev) return status('⚠️ Choisis une imprimante', false);
+      setBusy(true);
+      status(O.source === 'platen' ? '🖨️ Numérisation en cours…' : '🖨️ Numérisation des feuilles du chargeur…', true);
+      const r = await window.native.scannerScan(O.dev, { source: O.source, color: O.color, dpi: O.dpi, paper: O.paper }).catch(e => ({ ok: false, error: String(e) }));
+      setBusy(false);
+      if (!DSCAN.open) return;
+      if (r && r.ok && r.pages.length){
+        pages.push(...r.pages); drawPages(); setBusy(false);
+        status(`✅ ${r.pages.length} page${r.pages.length > 1 ? 's' : ''} numérisée${r.pages.length > 1 ? 's' : ''}` + (O.source === 'platen' ? ' — pose la page suivante ou ouvre le PDF' : ''), true);
+      } else if (r && /annul/.test(r.error || '')) status('Numérisation annulée', false);
+      else status('⚠️ ' + ((r && r.error) || 'Aucune page reçue'), false);
+    };
+    bOk.onclick = async () => {
+      if (!pages.length || DSCAN.busy) return;
+      try {
+        busy(true, 'Création du PDF…');
+        const d = new Date(), z = n => String(n).padStart(2, '0');
+        const name = `Numérisation ${z(d.getDate())}-${z(d.getMonth() + 1)}-${d.getFullYear()} ${z(d.getHours())}h${z(d.getMinutes())}.pdf`;
+        const bytes = await dsPagesToPdf(pages);
+        busy(false); close(true);
+        await openFiles([new File([bytes], name, { type: 'application/pdf' })], false);
+        toast(`📄 ${pages.length} page${pages.length > 1 ? 's' : ''} numérisée${pages.length > 1 ? 's' : ''}`);
+      } catch (e) { busy(false); console.error(e); status('⚠️ Pages illisibles : ' + ((e && e.message) || e), false); }
+    };
+    q('[data-x]').onclick = () => { if (DSCAN.busy) window.native.scannerCancel(); close(null); };
+    applyInfo();
+    if (DSCAN.list) fill(DSCAN.list); else search();
+  });
+  if (DSCAN.busy) window.native.scannerCancel();
+  DSCAN.open = false; DSCAN.busy = false; DSCAN.onEvent = null;
+}
+if (window.native && window.native.scannerScan){
+  $('#rScan').classList.remove('hidden');
+  $('#rScan').onclick = openDevScan;
+  window.native.onScanner(ev => DSCAN.onEvent && DSCAN.onEvent(ev));
 }
 
 /* ================= Mises à jour (bouton en haut) ================= */

@@ -223,6 +223,26 @@ ipcMain.handle('scan-start', async e => {
 ipcMain.handle('scan-stop', e => { if (fromApp(e)) scanStop(); return true; });
 app.on('before-quit', () => { if (SCAN.server) scanStop(); });
 
+/* ---------- Numériser depuis une imprimante / un scanner (scanner.js) ---------- */
+let scannerMod = null;
+const scanner = () => { if (!scannerMod) { scannerMod = require('./scanner.js'); scannerMod.initManual(app.getPath('userData')); } return scannerMod; };
+const scErr = err => ({ ok: false, error: String(err && err.message || err) });
+ipcMain.handle('scanners', async e => { if (!fromApp(e)) return []; try { return await scanner().list(); } catch { return []; } });
+ipcMain.handle('scanner-info', async (e, id) => { if (!fromApp(e)) return null; try { return { ok: true, ...(await scanner().info(String(id))) }; } catch (err) { return scErr(err); } });
+ipcMain.handle('scanner-add', async (e, addr) => {
+  if (!fromApp(e)) return null;
+  try { const d = await scanner().probe(String(addr || '').slice(0, 200)); return { ok: true, id: d.id, kind: d.kind, name: d.name, host: d.host, manual: true }; } catch (err) { return scErr(err); }
+});
+ipcMain.handle('scanner-forget', (e, addr) => { if (fromApp(e)) scanner().forget(String(addr)); return true; });
+ipcMain.handle('scanner-scan', async (e, id, o) => {
+  if (!fromApp(e)) return null;
+  try {
+    const pages = await scanner().scan(String(id), o || {}, n => scanSend('scanner-event', { type: 'page', n }));
+    return { ok: true, pages };
+  } catch (err) { return scErr(err); }
+});
+ipcMain.handle('scanner-cancel', e => fromApp(e) ? scanner().cancel() : false);
+
 /* ---------- Reconnaissance du texte des pages scannées (OCR, hors ligne) ----------
    Tesseract (modèle français inclus dans ocr/) tourne dans un fil séparé du processus principal ;
    la fenêtre envoie l'image de la page rendue en haute définition et reçoit les lignes avec leurs positions. */

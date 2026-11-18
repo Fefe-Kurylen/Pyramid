@@ -1,0 +1,28 @@
+# Vérifie « Numériser depuis une imprimante » sur un vrai Windows : faux scanner réseau eSCL, scripts PowerShell WIA
+name: Windows - essai numérisation
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/scanner-windows.yml', 'windows/scanner.js', 'tests/scanner-node.js', 'tests/fake-escl.js', 'tests/check-ps.js']
+  workflow_dispatch:
+jobs:
+  scanner:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - name: Module mDNS
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory t | Out-Null
+          Set-Location t; npm init -y | Out-Null; npm install bonjour-service@1 --no-audit --no-fund
+      - name: Scripts PowerShell WIA sans erreur de syntaxe
+        run: node tests/check-ps.js
+      - name: Numérisation (faux scanner + WIA)
+        shell: pwsh
+        run: |
+          $env:NODE_PATH = (Resolve-Path t\node_modules).Path
+          $out = node tests\scanner-node.js 2>&1 | Out-String
+          $out
+          if ($out -notmatch 'RÉSULTAT OK') { throw "Numérisation en échec" }
