@@ -24,6 +24,16 @@
     ready: function () {},
     version: async function () { var i = await P.App.getInfo(); return i.version; }
   };
+  // iPhone / iPad : abonnement App Store (essai gratuit de 2 semaines puis mensuel)
+  if (plat === 'ios' && P.PyramidNative.subStatus) {
+    window.native.sub = {
+      status: function () { return P.PyramidNative.subStatus(); },
+      buy: function () { return P.PyramidNative.subBuy(); },
+      restore: function () { return P.PyramidNative.subRestore(); },
+      manage: function () { return P.PyramidNative.subManage(); },
+      onChange: function (cb) { P.PyramidNative.addListener('subChange', cb); }
+    };
+  }
   // Fichiers ouverts avec « Ouvrir avec Pyramid PDF » / « Partager vers Pyramid PDF »
   var openUrl = async function (url) {
     if (!url || /^(https?|capacitor):/i.test(url)) return;

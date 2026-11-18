@@ -12,10 +12,15 @@ window.Capacitor = { isNativePlatform: () => true, getPlatform: () => '%s', Plug
   Filesystem: { writeFile: async o => { __calls.push(['writeFile', o.path, o.data.length, o.directory]); return { uri: 'file:///cache/' + o.path }; } },
   Share: { share: async o => { __calls.push(['share', o.files]); } },
   App: { addListener: (e, cb) => { window.__appCb = cb; return { remove(){} }; }, getLaunchUrl: async () => null, getInfo: async () => ({ version: '1.3.0' }) },
-  PyramidNative: { addListener: (e, cb) => { window.__openCb = cb; return { remove(){} }; },
+  PyramidNative: { addListener: (e, cb) => { if (e === 'subChange') window.__subCb = cb; else window.__openCb = cb; return { remove(){} }; },
     printPdf: async o => { __calls.push(['printPdf', o.data.length, o.name]); },
     tsa: async o => { __calls.push(['tsa', o.url]); throw new Error('hors ligne'); },
-    readUri: async o => { __calls.push(['readUri', o.url]); return { name: 'ouvert.pdf', data: window.__pdfB64 }; } } } };
+    readUri: async o => { __calls.push(['readUri', o.url]); return { name: 'ouvert.pdf', data: window.__pdfB64 }; },
+    subStatus: async () => window.__sub,
+    subBuy: async () => { __calls.push(['subBuy']); window.__sub = { ...window.__sub, active: true, trial: true, expires: Date.now() + 14*864e5 }; return window.__sub; },
+    subRestore: async () => window.__sub,
+    subManage: async () => window.__sub } } };
+window.__sub = { active: true, trial: true, loaded: true, price: '0,99 €', eligibleTrial: false, trialDays: 14, expires: Date.now() + 10*864e5 };
 """
 res = {}
 def check(name, ok, info=''):
@@ -28,6 +33,16 @@ with sync_playwright() as p:
         pg.goto('http://127.0.0.1:8765/index.html'); pg.wait_for_timeout(1500)
         E = pg.evaluate
         check('pont natif chargé', E("!!window.native && window.native.platform") == plat)
+        if plat == 'ios':
+            check('abonnement actif : appli accessible', E("!document.querySelector('#paywall').classList.contains('on') && !!window.native.sub"))
+            E("window.__sub = { active: false, loaded: true, price: '0,99 €', eligibleTrial: true, trialDays: 14 }; window.__subCb(window.__sub)"); pg.wait_for_timeout(400)
+            check('sans abonnement : écran d’abonnement', E("document.querySelector('#paywall').classList.contains('on')"), E("document.querySelector('[data-pw-head]').textContent + ' / ' + document.querySelector('[data-pw-buy]').textContent"))
+            vis_pw = E("(() => { const r = document.querySelector('[data-pw-restore]').getBoundingClientRect(); return r.bottom <= innerHeight + 1 || document.querySelector('#paywall').scrollHeight > innerHeight; })()")
+            check('écran d’abonnement lisible', vis_pw)
+            pg.screenshot(path='/tmp/mt/ios-abonnement.png')
+            pg.tap('[data-pw-buy]'); pg.wait_for_timeout(500)
+            check('essai démarré → appli accessible', E("!document.querySelector('#paywall').classList.contains('on') && __calls.some(c => c[0] === 'subBuy')"))
+            check('cœur « Soutenir » masqué sur iPhone', E("getComputedStyle(document.querySelector('#heartBtn')).display === 'none'"))
         check('classe mobile', E("document.documentElement.classList.contains('mobile') && !document.documentElement.classList.contains('desk')"))
         pg.screenshot(path=f'/tmp/mt/{plat}-0-accueil.png')
         pg.set_input_files('#fOpen', f'{DOCS}/multi.pdf'); pg.wait_for_timeout(2500)

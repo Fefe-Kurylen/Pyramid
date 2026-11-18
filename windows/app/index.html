@@ -352,6 +352,25 @@ html:not(.reading) #reader,html:not(.reading) #rbar{display:none!important}
 #updBtn:hover{filter:brightness(1.08)}
 #updBtn.dl{background:var(--panel2);color:var(--text);border:1px solid var(--line2)}
 #updBtn svg{width:15px;height:15px}
+#paywall{position:fixed;inset:0;z-index:80;display:none;overflow:auto;background:var(--bg);padding:calc(var(--sat, 0px) + 28px) 22px calc(var(--sab, 0px) + 22px)}
+#paywall.on{display:block}
+#paywall .pw{max-width:440px;margin:0 auto;display:flex;flex-direction:column;align-items:center;text-align:center;gap:14px}
+#paywall .pw-mark{width:76px;height:76px;border-radius:20px;background:var(--accent);display:grid;place-items:center;color:#fff;box-shadow:0 10px 30px var(--shade)}
+#paywall .pw-mark svg{width:40px;height:40px}
+#paywall h1{font-size:26px;letter-spacing:-.02em;margin:4px 0 0}
+#paywall .pw-sub{color:var(--muted);font-size:15px;margin:-6px 0 4px}
+#paywall ul{list-style:none;padding:0;margin:4px 0;display:grid;gap:10px;text-align:left;width:100%}
+#paywall li{display:flex;gap:10px;align-items:center;font-size:15px}
+#paywall li svg{width:18px;height:18px;flex:none;color:var(--accent)}
+#paywall .pw-offer{width:100%;border:1.5px solid var(--accent);border-radius:16px;padding:16px;background:var(--panel)}
+#paywall .pw-offer b{display:block;font-size:20px}
+#paywall .pw-offer span{color:var(--muted);font-size:14px}
+#paywall .pw-buy{width:100%;height:52px;border-radius:14px;font-size:16.5px;font-weight:700;background:var(--accent);color:#fff;border:0}
+#paywall .pw-buy:disabled{opacity:.6}
+#paywall .pw-restore{background:none;border:0;color:var(--accent);font-size:14.5px;font-weight:600;padding:6px}
+#paywall .pw-err{color:#e5484d;font-size:13.5px;min-height:1em}
+#paywall .pw-legal{color:var(--faint);font-size:11.5px;line-height:1.45}
+#paywall .pw-legal a{color:var(--muted)}
 .updrow{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .updrow [data-uver]{font-weight:600;font-variant-numeric:tabular-nums}
 @media (max-width:760px){ .prt{flex-direction:column;height:auto} .prt .ps{width:auto;border-left:0} .prt .pvs{max-height:40vh} }
@@ -489,6 +508,23 @@ html:not(.reading) #reader,html:not(.reading) #rbar{display:none!important}
 <div id="busy" class="hidden"><div style="text-align:center"><div class="spin"></div><div id="busyT" style="color:var(--muted)">Chargement…</div></div></div>
 <div id="modalRoot"></div>
 
+<div id="paywall" role="dialog" aria-modal="true" aria-label="Abonnement Pyramid PDF"><div class="pw">
+  <div class="pw-mark" data-ic="pyramid"></div>
+  <h1>Pyramid PDF</h1>
+  <p class="pw-sub">Lisez, modifiez et signez vos PDF</p>
+  <ul>
+    <li data-ic2="check">Modifier le texte d'origine, dans la même police</li>
+    <li data-ic2="check">Signature électronique horodatée</li>
+    <li data-ic2="check">Images, formulaires, pages, caviardage</li>
+    <li data-ic2="check">Impression AirPrint et partage</li>
+    <li data-ic2="check">Thèmes et interface personnalisables</li>
+  </ul>
+  <div class="pw-offer"><b data-pw-head>2 semaines gratuites</b><span data-pw-price>puis 0,99 € par mois · résiliable à tout moment</span></div>
+  <button class="pw-buy" data-pw-buy>Commencer l'essai gratuit</button>
+  <div class="pw-err" data-pw-err></div>
+  <button class="pw-restore" data-pw-restore>Restaurer mes achats</button>
+  <p class="pw-legal" data-pw-legal></p>
+</div></div>
 <script>
 (() => {
 'use strict';
@@ -2770,12 +2806,19 @@ function openSettings(){
     <div class="setrow"><span class="lbl">🔍 Taille de l’interface (icônes et barres d’outils)</span>${seg('icons',[['s','Petite'],['m','Moyenne'],['l','Grande'],['xl','Très grande']])}</div>
     <div class="setrow"><span class="lbl">⬛ Coins</span>${seg('radius',[['carre','Carrés'],['doux','Doux'],['rond','Ronds']])}</div>
     <div class="setrow"><span class="lbl">🖱️ Molette en mode Modifier</span>${seg('wheel',[['zoom','Zoomer'],['scroll','Défiler']])}<div class="note">En lecture, la molette fait toujours défiler (Ctrl + molette pour zoomer). En mode Modifier : « Zoomer » → Maj + molette pour défiler ; « Défiler » → Ctrl + molette pour zoomer.</div></div>
+    ${window.native && window.native.sub ? `<div class="setrow"><span class="lbl">⭐ Abonnement</span><div class="updrow"><span data-subtxt>…</span><button class="btn ghost" data-submanage>Gérer l'abonnement</button></div></div>` : ''}
     ${window.native && window.native.version ? `<div class="setrow"><span class="lbl">${window.native.checkUpdate ? '🔄 Mises à jour' : 'ℹ️ À propos'}</span><div class="updrow"><span data-uver>Pyramid PDF</span>${window.native.checkUpdate ? '<button class="btn ghost" data-upd>Rechercher maintenant</button>' : ''}</div><div class="note" data-unote></div></div>` : ''}
     <div class="row"><button class="btn ghost" data-reset>Réinitialiser</button><button class="btn primary" data-x data-ic="check">Terminé</button></div>`,
   (card, close) => {
     card.classList.add('wide');
     const uv = card.querySelector('[data-uver]');
     if (uv) window.native.version().then(v => { uv.textContent = 'Pyramid PDF · version ' + v; }).catch(() => {});
+    const stx = card.querySelector('[data-subtxt]');
+    if (stx){
+      const paintSub = st => { stx.textContent = subLabel(st); };
+      paintSub(SUB.st); window.native.sub.status().then(st => { SUB.st = st; paintSub(st); }).catch(() => {});
+      card.querySelector('[data-submanage]').onclick = () => window.native.sub.manage().then(st => { SUB.st = st; paintSub(st); subApply(st); }).catch(() => {});
+    }
     const ub = card.querySelector('[data-upd]');
     if (ub){
       const paint = () => {
@@ -3456,6 +3499,63 @@ window.addEventListener('beforeunload', e => { saveTab(); if (TABS.some(t => t.d
 applySettings(false);
 renderTabs();
 if (/[?&]debug\b/.test(location.search)) window.__pyr = { S, getLines, cur, TABS, switchTab, embWorks, goto, embOk, startPara, openFind, zoomTo, bbox, refineFont, hiRes, sampleColorsHi };
+/* ================= Abonnement iPhone / iPad (App Store) =================
+   Essai gratuit de 2 semaines puis 0,99 €/mois, géré par Apple (StoreKit 2 dans PyramidNative.swift).
+   Sans abonnement actif, l'écran d'abonnement couvre l'appli. */
+const SUB = { st: null, busy: false };
+const SUB_TERMS = 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
+const SUB_PRIVACY = 'https://github.com/Fefe-Kurylen/Pyramid/blob/main/PRIVACY.md';
+const fmtDay = ms => new Date(ms).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+function subLabel(st){
+  if (!st) return 'Vérification…';
+  if (st.active && st.trial) return `Essai gratuit${st.expires ? ' jusqu’au ' + fmtDay(st.expires) : ''}`;
+  if (st.active) return `Actif${st.expires ? ' · renouvellement le ' + fmtDay(st.expires) : ''}`;
+  return 'Aucun abonnement actif';
+}
+function subApply(st){
+  const pw = $('#paywall'); if (!pw) return;
+  const open = !(st && st.active);
+  pw.classList.toggle('on', open);
+  if (!open) return;
+  const price = (st && st.price) || '0,99 €', days = (st && st.trialDays) || 14;
+  const trial = !st || st.eligibleTrial !== false;
+  const len = days % 7 === 0 ? (days / 7 === 1 ? '1 semaine' : `${days / 7} semaines`) : `${days} jours`;
+  pw.querySelector('[data-pw-head]').textContent = trial ? `${len} gratuites` : 'Abonnement mensuel';
+  pw.querySelector('[data-pw-price]').textContent = trial ? `puis ${price} par mois · résiliable à tout moment` : `${price} par mois · résiliable à tout moment`;
+  pw.querySelector('[data-pw-buy]').textContent = trial ? 'Commencer l’essai gratuit' : `S’abonner — ${price}/mois`;
+  pw.querySelector('[data-pw-legal]').innerHTML = `Abonnement mensuel à renouvellement automatique (${esc(price)} par mois${trial ? ` après ${esc(len)} d’essai gratuit` : ''}). `
+    + `Le paiement est débité sur votre compte Apple ${trial ? 'à la fin de l’essai' : 'à la confirmation de l’achat'}. L’abonnement se renouvelle automatiquement sauf résiliation au moins 24 h avant la fin de la période en cours, `
+    + `dans Réglages → votre nom → Abonnements.<br><a href="${SUB_TERMS}" target="_blank" rel="noopener">Conditions d’utilisation</a> · <a href="${SUB_PRIVACY}" target="_blank" rel="noopener">Confidentialité</a>`;
+  pw.querySelector('[data-pw-err]').textContent = st && st.loaded === false ? 'App Store injoignable : vérifie la connexion internet puis réessaie.' : '';
+}
+async function subCheck(){
+  const n = window.native && window.native.sub; if (!n) return;
+  try { SUB.st = await n.status(); } catch { SUB.st = { active: false, loaded: false }; }
+  subApply(SUB.st);
+}
+if (window.native && window.native.sub){
+  const pw = $('#paywall');
+  pw.querySelectorAll('[data-ic2]').forEach(li => li.insertAdjacentHTML('afterbegin', ic(li.dataset.ic2)));
+  const mk = pw.querySelector('.pw-mark'); mk.innerHTML = ic('pyramid');
+  const act = async (fn, okMsg) => {
+    if (SUB.busy) return; SUB.busy = true;
+    const b = pw.querySelector('[data-pw-buy]'), err = pw.querySelector('[data-pw-err]');
+    b.disabled = true; err.textContent = '';
+    try {
+      const st = await fn(); SUB.st = st; subApply(st);
+      if (st.active) toast(okMsg); else if (st.pending) err.textContent = 'Achat en attente de validation (contrôle parental ?).';
+      else if (!st.cancelled && fn === window.native.sub.restore) err.textContent = 'Aucun abonnement à restaurer sur ce compte Apple.';
+    } catch (e) { err.textContent = 'Achat impossible : ' + ((e && e.message) || e); }
+    b.disabled = false; SUB.busy = false;
+  };
+  pw.querySelector('[data-pw-buy]').onclick = () => act(window.native.sub.buy, '🎉 Bienvenue dans Pyramid PDF !');
+  pw.querySelector('[data-pw-restore]').onclick = () => act(window.native.sub.restore, '✅ Abonnement restauré');
+  window.native.sub.onChange(st => { SUB.st = st; subApply(st); });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) subCheck(); });
+  $('#heartBtn').style.display = 'none';   // pas de dons dans l'appli iPhone (règles de l'App Store)
+  subCheck();
+}
+
 /* ================= Mises à jour (bouton en haut) ================= */
 let UPD = { mode:'off', status:'idle' }, updPaint = null;
 function onUpd(u, quiet){

@@ -1,0 +1,144 @@
+# Publication Apple, sur un Mac de GitHub :
+#  - iPhone / iPad : signature automatique (clé App Store Connect) puis envoi sur App Store Connect (TestFlight → App Store)
+#  - Mac : signature Developer ID + notarisation Apple, puis ajout du .dmg / .zip à la publication GitHub v<version>
+# Secrets du dépôt : ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8, APPLE_TEAM_ID (+ MAC_CERT_P12, MAC_CERT_PASSWORD pour le Mac)
+name: Apple - App Store et Mac
+on:
+  push:
+    branches: [main]
+    paths: ['mobile/package.json', 'windows/package.json', '.github/workflows/apple.yml']
+  workflow_dispatch:
+    inputs:
+      cible:
+        description: 'iphone, mac ou les-deux'
+        default: 'les-deux'
+concurrency:
+  group: apple
+  cancel-in-progress: false
+jobs:
+  iphone:
+    if: github.event_name == 'push' || inputs.cible != 'mac'
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: mobile
+    env:
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Secrets présents ?
+        id: ok
+        run: |
+          if [ -n "$ASC_KEY_ID" ] && [ -n "$TEAM_ID" ]; then echo "ok=1" >> $GITHUB_OUTPUT; else echo "ok=0" >> $GITHUB_OUTPUT; echo "Secrets Apple absents : rien à faire"; fi
+      - uses: actions/setup-node@v4
+        if: steps.ok.outputs.ok == '1'
+        with:
+          node-version: 22
+      - if: steps.ok.outputs.ok == '1'
+        run: npm ci && python3 make-mobile.py && npx cap sync ios
+      - name: Clé App Store Connect
+        if: steps.ok.outputs.ok == '1'
+        run: |
+          mkdir -p ~/private_keys
+          printf '%s' "${{ secrets.ASC_KEY_P8 }}" > ~/private_keys/AuthKey_$ASC_KEY_ID.p8
+      - name: Archive signée (signature automatique)
+        if: steps.ok.outputs.ok == '1'
+        run: |
+          BUILD=$((100 + ${{ github.run_number }}))
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath build/App.xcarchive \
+            DEVELOPMENT_TEAM=$TEAM_ID CODE_SIGN_STYLE=Automatic CURRENT_PROJECT_VERSION=$BUILD \
+            -allowProvisioningUpdates -authenticationKeyPath ~/private_keys/AuthKey_$ASC_KEY_ID.p8 \
+            -authenticationKeyID $ASC_KEY_ID -authenticationKeyIssuerID $ASC_ISSUER_ID archive | tail -n 30
+          test ${PIPESTATUS[0]} -eq 0
+      - name: Envoi sur App Store Connect
+        if: steps.ok.outputs.ok == '1'
+        run: |
+          cat > build/ExportOptions.plist <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>$TEAM_ID</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>uploadSymbols</key><true/>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict></plist>
+          PLIST
+          xcodebuild -exportArchive -archivePath build/App.xcarchive -exportOptionsPlist build/ExportOptions.plist \
+            -exportPath build/export -allowProvisioningUpdates -authenticationKeyPath ~/private_keys/AuthKey_$ASC_KEY_ID.p8 \
+            -authenticationKeyID $ASC_KEY_ID -authenticationKeyIssuerID $ASC_ISSUER_ID | tail -n 30
+          test ${PIPESTATUS[0]} -eq 0
+          echo "✅ Pyramid PDF $(node -p "require('./package.json').version") ($((100 + ${{ github.run_number }}))) envoyée sur App Store Connect"
+      - if: always()
+        run: rm -rf ~/private_keys
+
+  mac:
+    if: github.event_name == 'push' || inputs.cible != 'iphone'
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: windows
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      HAS_CERT: ${{ secrets.MAC_CERT_P12 != '' }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Certificat présent ?
+        id: ok
+        run: |
+          if [ "$HAS_CERT" = "true" ] && [ -n "$ASC_KEY_ID" ]; then echo "ok=1" >> $GITHUB_OUTPUT; else echo "ok=0" >> $GITHUB_OUTPUT; echo "Certificat Developer ID absent : rien à faire"; fi
+      - uses: actions/setup-node@v4
+        if: steps.ok.outputs.ok == '1'
+        with:
+          node-version: 22
+      - if: steps.ok.outputs.ok == '1'
+        run: npm ci
+      - name: Signature Developer ID + notarisation
+        if: steps.ok.outputs.ok == '1'
+        env:
+          CSC_LINK: ${{ secrets.MAC_CERT_P12 }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+          APPLE_API_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          mkdir -p ~/private_keys
+          printf '%s' "${{ secrets.ASC_KEY_P8 }}" > ~/private_keys/AuthKey_$ASC_KEY_ID.p8
+          export APPLE_API_KEY=~/private_keys/AuthKey_$ASC_KEY_ID.p8
+          node -e "
+            const f='package.json', j=require('./'+f), m=j.build.mac;
+            delete m.identity;
+            Object.assign(m, { hardenedRuntime: true, gatekeeperAssess: false, notarize: true,
+              entitlements: 'build/entitlements.mac.plist', entitlementsInherit: 'build/entitlements.mac.plist',
+              target: [{ target: 'dmg', arch: ['universal'] }, { target: 'zip', arch: ['universal'] }],
+              artifactName: 'Pyramid-PDF-Mac-\${version}.\${ext}' });
+            require('fs').writeFileSync(f, JSON.stringify(j, null, 2));"
+          npx electron-builder --mac --publish never
+          rm -rf ~/private_keys
+      - name: Vérification Apple (Gatekeeper)
+        if: steps.ok.outputs.ok == '1'
+        run: |
+          APP=$(ls -d dist/mac-universal/*.app | head -1)
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          spctl --assess --type execute --verbose=4 "$APP"
+          xcrun stapler validate "$APP"
+          echo "✅ Mac signée et notarisée"
+      - name: Ajout à la publication GitHub
+        if: steps.ok.outputs.ok == '1'
+        run: |
+          V=$(node -p "require('./package.json').version")
+          gh release view "v$V" -R "${{ github.repository }}" >/dev/null 2>&1 || { echo "Publication v$V absente : fichiers gardés dans les artifacts"; exit 0; }
+          gh release upload "v$V" dist/Pyramid-PDF-Mac-$V.dmg dist/Pyramid-PDF-Mac-$V.zip -R "${{ github.repository }}" --clobber
+      - uses: actions/upload-artifact@v4
+        if: steps.ok.outputs.ok == '1'
+        with:
+          name: pyramid-pdf-mac
+          path: |
+            windows/dist/*.dmg
+            windows/dist/*.zip

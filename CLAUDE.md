@@ -19,15 +19,16 @@ Dossier du projet sur le PC : `C:\Users\felix\Desktop\Claude\Pyramid` (code dans
   - `build/icon.png`, `build/icon.ico`
 - `mobile/` — appli iPhone + Android (Capacitor 8)
   - `make-mobile.py` — construit `www/` à partir de `windows/app` (libs et polices locales) + `native-bridge.js`
-  - `native-bridge.js` — définit `window.native` sur mobile : save (fichier + feuille de partage), printPdf, tsa, onOpenFile, version
+  - `native-bridge.js` — définit `window.native` sur mobile : save (fichier + feuille de partage), printPdf, tsa, onOpenFile, version, `sub` (iPhone : status, buy, restore, manage, onChange)
   - `android/` — projet Android (module natif `PyramidNativePlugin.java` : impression, horodatage, « Ouvrir avec » / « Partager vers ») ; signature de publication via `keystore.properties` + `pyramid-upload.jks` (**jamais sur GitHub**, gardés dans `Clés-Android` sur le PC)
-  - `ios/` — projet Xcode (Swift Package Manager ; `App/PyramidNative.swift` : impression AirPrint, horodatage, lecture des fichiers ouverts)
+  - `ios/` — projet Xcode (Swift Package Manager ; `App/PyramidNative.swift` : impression AirPrint, horodatage, lecture des fichiers ouverts, abonnement StoreKit 2)
 - `.github/workflows/ios.yml` — vérifie sur un Mac de GitHub que l'appli iPhone se compile et fabrique `Pyramid-PDF-iPhone-X.Y.Z.ipa` non signé (artifacts), à signer avec un identifiant Apple (Sideloadly / AltStore) ou le compte Apple Developer
+- `.github/workflows/apple.yml` — Mac de GitHub : iPhone/iPad signé (signature automatique, clé App Store Connect) et envoyé sur App Store Connect ; Mac signé Developer ID + notarisé, ajouté à la publication GitHub. Secrets : `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8`, `APPLE_TEAM_ID`, `MAC_CERT_P12`, `MAC_CERT_PASSWORD`
 - `.github/workflows/release.yml` — publie chaque nouvelle version sur GitHub (Releases) pour le bouton « Mise à jour », puis l'essaie (0.0.1 → nouvelle version)
 - `.github/workflows/windows-store.yml` — fabrique le paquet Microsoft Store (`.appx`) sur un Windows de GitHub, le signe en test, l'installe, le lance, le désinstalle et passe la certification WACK (résultat PASS) ; le paquet est téléchargeable dans les « artifacts » du run
-- `store/` — fiche Microsoft Store prête à copier (`FICHE-STORE.md`), captures 1920×1080, rapport WACK
+- `store/` — fiche Microsoft Store prête à copier (`FICHE-STORE.md`), captures 1920×1080, rapport WACK ; `store/apple/` : fiche App Store (`FICHE-APPSTORE.md`), captures iPhone 6,9" et iPad 13" (`captures.py`)
 - `PRIVACY.md` — politique de confidentialité publique (URL demandée par le Store)
-- `tests/` — `mobile.py` (32 tests en écran de téléphone : Chromium Android + WebKit iPhone, faux Capacitor), `full.py` (59 tests web, Playwright Python), `e6.js` (détection du texte dans Electron),
+- `tests/` — `mobile.py` (37 tests, dont l'abonnement iPhone en écran de téléphone : Chromium Android + WebKit iPhone, faux Capacitor), `full.py` (59 tests web, Playwright Python), `e6.js` (détection du texte dans Electron),
   `e7.js` / `e9.js` (molette + impression), `e16.js` (bouton Mise à jour), `tstart.js` (temps de démarrage), `docs/` (PDF de test).
   Les chemins dans les tests pointent encore vers l'ancien espace Linux (`/home/claude/...`, `/tmp/t/...`) : à adapter.
 
@@ -67,6 +68,11 @@ Installation actuelle sur le PC : `C:\Users\felix\AppData\Local\Programs\Pyramid
 - Les applis installées **avant la 1.4.0** n'ont pas de bouton : installer une fois `Pyramid-PDF-Installation-1.4.0.exe` (ou plus récent).
 - Microsoft Store : en parallèle, **version 1.3.0 soumise le 17/11/2026** (fiche en français, runFullTrust justifié, politique de confidentialité = URL GitHub de PRIVACY.md). Identité Store dans `build.appx` de `windows/package.json` : `Kurylen.PyramidPDF`, `CN=B85CD3FF-A422-425E-9A54-A6E74180E94E`, éditeur `Kurylen` ; logos dans `windows/build/appx/`. Paquet `.appx` : artifacts du workflow `windows-store.yml`, puis Partner Center → nouvelle soumission → Packages.
 - Version actuelle : 1.4.0 sur Windows (bouton de mise à jour), iPhone et Android ; 1.3.0 sur Mac. Le dossier de données reste `%APPDATA%\Pyramid` (`app.setPath('userData', …)` dans main.js) pour garder les réglages.
+
+## 🍎 Apple (App Store + Mac)
+- Compte Apple Developer actif (Félix = titulaire du compte). Clé App Store Connect « GitHub Pyramid » (Admin), ID de clé `R3CB57DAX3` ; fichier `.p8` gardé dans `Clés-Apple (à garder secret)` sur le PC (**jamais dans le dépôt**), copie chiffrée dans les secrets GitHub.
+- **iPhone / iPad : abonnement** — essai gratuit de **2 semaines** puis **0,99 €/mois** (Apple ne propose pas 15 jours). Produit `fr.pyramid.pdf.mensuel`, groupe « Pyramid PDF ». StoreKit 2 dans `PyramidNative.swift` (subStatus / subBuy / subRestore / subManage, événement `subChange`), vérification sur l'appareil, aucun serveur. Sans abonnement actif, l'écran `#paywall` couvre l'appli (textes légaux Apple, Restaurer mes achats) ; réglages → « ⭐ Abonnement » (état + Gérer l'abonnement). Le cœur « Soutenir » est masqué sur iPhone (dons interdits par l'App Store).
+- Windows, Mac et Android restent sans abonnement.
 
 ## 🧠 Fonctionnement clé
 - **Modes** : `MODE = 'read' | 'edit'` (classe `reading` sur `<html>`). Le PDF s'ouvre en **lecteur** (pages continues,

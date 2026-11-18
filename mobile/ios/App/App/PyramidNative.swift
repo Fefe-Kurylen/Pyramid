@@ -1,5 +1,6 @@
 import UIKit
 import Capacitor
+import StoreKit
 
 /// Contrôleur principal : charge Capacitor et enregistre le module natif de Pyramid PDF.
 class MainViewController: CAPBridgeViewController {
@@ -16,8 +17,28 @@ public class PyramidNativePlugin: CAPPlugin, CAPBridgedPlugin {
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "printPdf", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "tsa", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "readUri", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "readUri", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "subStatus", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "subBuy", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "subRestore", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "subManage", returnType: CAPPluginReturnPromise)
     ]
+    /// Abonnement mensuel (App Store Connect : groupe « Pyramid PDF », essai gratuit de 2 semaines, 0,99 €/mois)
+    private let subId = "fr.pyramid.pdf.mensuel"
+    private var updates: Task<Void, Never>?
+
+    override public func load() {
+        // Renouvellements, résiliations, achats faits ailleurs (autre appareil, Réglages) : l'interface est prévenue
+        updates = Task.detached { [weak self] in
+            for await result in Transaction.updates {
+                if case .verified(let t) = result { await t.finish() }
+                guard let self = self else { return }
+                let st = await self.status()
+                self.notifyListeners("subChange", data: st)
+            }
+        }
+    }
+    deinit { updates?.cancel() }
     private let tsaOk = ["http://timestamp.digicert.com", "http://timestamp.sectigo.com", "https://freetsa.org/tsr"]
 
     /// Fenêtre d'impression d'iOS (aperçu, imprimante AirPrint, copies, recto verso…)
@@ -73,6 +94,67 @@ public class PyramidNativePlugin: CAPPlugin, CAPBridgedPlugin {
             }
             if let d = result { call.resolve(["data": d.base64EncodedString(), "name": url.lastPathComponent]) }
             else { call.reject("Lecture impossible : \(failure?.localizedDescription ?? "fichier introuvable")") }
+        }
+    }
+
+    // MARK: - Abonnement (StoreKit 2, vérifié par l'appareil : aucun serveur nécessaire)
+
+    private func status() async -> [String: Any] {
+        var out: [String: Any] = ["active": false, "trial": false, "productId": subId]
+        if let p = try? await Product.products(for: [subId]).first {
+            out["price"] = p.displayPrice
+            if let sub = p.subscription {
+                out["eligibleTrial"] = await sub.isEligibleForIntroOffer
+                if let o = sub.introductoryOffer, o.paymentMode == .freeTrial {
+                    let u = o.period.unit
+                    out["trialDays"] = o.period.value * (u == .day ? 1 : u == .week ? 7 : u == .month ? 30 : 365)
+                }
+            }
+            out["loaded"] = true
+        } else { out["loaded"] = false }
+        for await result in Transaction.currentEntitlements {
+            guard case .verified(let t) = result, t.productID == subId, t.revocationDate == nil else { continue }
+            if let e = t.expirationDate, e < Date() { continue }
+            out["active"] = true
+            out["trial"] = t.offerType == .introductory
+            if let e = t.expirationDate { out["expires"] = e.timeIntervalSince1970 * 1000 }
+        }
+        return out
+    }
+
+    @objc func subStatus(_ call: CAPPluginCall) {
+        Task { call.resolve(await status()) }
+    }
+
+    @objc func subBuy(_ call: CAPPluginCall) {
+        Task {
+            do {
+                guard let p = try await Product.products(for: [subId]).first else { call.reject("Abonnement indisponible pour le moment"); return }
+                let r = try await p.purchase()
+                switch r {
+                case .success(let v):
+                    if case .verified(let t) = v { await t.finish() } else { call.reject("Achat non vérifié"); return }
+                case .userCancelled: var st = await status(); st["cancelled"] = true; call.resolve(st); return
+                case .pending: var st = await status(); st["pending"] = true; call.resolve(st); return
+                @unknown default: break
+                }
+                call.resolve(await status())
+            } catch { call.reject(error.localizedDescription) }
+        }
+    }
+
+    @objc func subRestore(_ call: CAPPluginCall) {
+        Task {
+            do { try await AppStore.sync() } catch { call.reject(error.localizedDescription); return }
+            call.resolve(await status())
+        }
+    }
+
+    @objc func subManage(_ call: CAPPluginCall) {
+        Task { @MainActor in
+            guard let scene = self.bridge?.viewController?.view.window?.windowScene else { call.reject("Indisponible"); return }
+            do { try await AppStore.showManageSubscriptions(in: scene) } catch { call.reject(error.localizedDescription); return }
+            call.resolve(await self.status())
         }
     }
 }
