@@ -115,6 +115,18 @@ select{background:var(--panel2);color:var(--text);border:1px solid var(--line2);
   #rail .zl{min-width:0;width:calc(var(--ib) + 12px);font-size:11px;padding:0;height:24px}
   #rail #editBtn,#rail #doneBtn{width:var(--ib);height:var(--ib);padding:0;justify-content:center}
   #rail #editBtn span,#rail #doneBtn span{display:none}
+  /* Barre d’icônes élargissable : 1 à 4 colonnes (poignée #railGrip), mémorisé dans pyramid-railc */
+  [data-layout=pro] #rail{width:calc(var(--rcols,1)*(var(--ib) + 2px) + 18px)}
+  #rail > .float{display:grid;grid-template-columns:repeat(var(--rcols,1),var(--ib));justify-content:center;justify-items:center;align-content:start;gap:2px}
+  #rail > .float.hidden{display:none}
+  #rail .sep{grid-column:1/-1;width:calc(100% - 10px)!important;justify-self:center}
+  #rail .num,#rail .zl{grid-column:1/-1}
+  #rail #pagebar{align-content:end}
+  #railGrip{display:none}
+  [data-layout=pro] #railGrip{display:block;order:-1;width:7px;margin:0 -3px;flex:none;cursor:col-resize;position:relative;z-index:8;touch-action:none}
+  [data-thumbs=right][data-layout=pro] #railGrip{order:4}
+  #railGrip::after{content:"";position:absolute;top:0;bottom:0;left:3px;width:1px;background:transparent;transition:.15s}
+  #railGrip:hover::after,#railGrip.on::after{background:var(--accent);width:2px;left:2.5px}
   [data-layout=pro] #stageIn{padding:calc(64px*var(--uiz)) 32px 40px}
   [data-density=compact][data-layout=pro] #stageIn{padding:calc(48px*var(--uiz)) 20px 28px}
   [data-layout=pro] #rIn{padding-top:24px}
@@ -408,6 +420,25 @@ html:not(.reading) #reader,html:not(.reading) #rbar{display:none!important}
 /* ---------- Toast / busy ---------- */
 #toast{position:fixed;left:50%;bottom:calc(24px + var(--sab));transform:translate(-50%,20px);background:var(--panel2);border:1px solid var(--line2);padding:10px 16px;border-radius:12px;opacity:0;transition:.25s;z-index:60;pointer-events:none;font-weight:500;white-space:nowrap}
 #toast.show{opacity:1;transform:translate(-50%,0)}
+#jobs{position:fixed;right:16px;bottom:calc(16px + var(--sab,0px));z-index:65;display:none;flex-direction:column;gap:8px;width:min(330px,calc(100vw - 32px))}
+#jobs.on{display:flex}
+.job{display:flex;align-items:center;gap:10px;padding:10px 10px 10px 12px;background:var(--panel);border:1px solid var(--line2);border-radius:calc(var(--rb) + 4px);box-shadow:0 10px 30px var(--shade);font-size:13px;animation:jobin .2s ease-out}
+.job.click{cursor:pointer}.job.click:hover{border-color:var(--accent)}
+@keyframes jobin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.job .jic{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;flex:none;background:rgba(var(--accent-rgb),.15);color:var(--accent)}
+.job .jic svg{width:18px;height:18px}
+.job.ok .jic{background:rgba(60,190,110,.16);color:#3cbe6e}
+.job.err .jic{background:rgba(230,80,70,.16);color:#e65046}
+.job.wait .jic{background:rgba(var(--accent-rgb),.25)}
+.job .jtx{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.job .jtx b{font-weight:600;color:var(--text)}
+.job .jtx span{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.job .jbar{display:block;height:4px;border-radius:2px;background:var(--line2);overflow:hidden;margin-top:4px}
+.job .jbar u{display:block;height:100%;background:var(--accent);border-radius:2px;transition:width .3s}
+.job .jbar.ind u{animation:jobind 1.2s ease-in-out infinite}
+@keyframes jobind{from{transform:translateX(-100%)}to{transform:translateX(290%)}}
+.job .jx{width:24px;height:24px;border-radius:50%;flex:none;color:var(--muted);font-size:17px;line-height:22px}
+.job .jx:hover{background:var(--panel2);color:var(--text)}
 #busy{position:fixed;inset:0;background:rgba(0,0,0,.45);display:grid;place-items:center;z-index:70}
 .spin{width:38px;height:38px;border-radius:50%;border:3px solid var(--line2);border-top-color:var(--accent);animation:sp .8s linear infinite;margin:0 auto 12px}
 @keyframes sp{to{transform:rotate(360deg)}}
@@ -470,6 +501,7 @@ html:not(.reading) #reader,html:not(.reading) #rbar{display:none!important}
 
 <main id="editor" class="hidden">
   <nav id="rail"></nav>
+  <div id="railGrip" title="Glisser pour élargir la barre d’outils sur plusieurs colonnes (double-clic : une colonne)"></div>
   <aside id="side"></aside>
   <div id="sideGrip" title="Glisser pour redimensionner les miniatures (double-clic : taille par défaut)"></div>
   <section id="center">
@@ -679,6 +711,35 @@ const isMobile = () => matchMedia('(max-width:760px)').matches;
 let toastT;
 function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),2200); }
 function busy(on,txt){ $('#busy').classList.toggle('hidden',!on); if(txt) $('#busyT').textContent=txt; }
+/* ---------- Petite fenêtre d’avancement (impression, numérisation, scan du téléphone) ----------
+   Reste visible même si la fenêtre de réglages est fermée ; toucher une ligne rouvre la fenêtre concernée. */
+const JOBS = new Map();
+function jobSet(id, o){
+  const j = Object.assign(JOBS.get(id) || { id, state: 'run' }, o);
+  JOBS.set(id, j); clearTimeout(j.t);
+  if (j.state === 'ok' || j.state === 'err') j.t = setTimeout(() => jobDel(id), j.state === 'ok' ? 6000 : 15000);
+  jobsRender();
+}
+function jobDel(id){ const j = JOBS.get(id); if (j) clearTimeout(j.t); JOBS.delete(id); jobsRender(); }
+function jobsRender(){
+  let box = $('#jobs');
+  if (!box){ box = document.createElement('div'); box.id = 'jobs'; document.body.appendChild(box); }
+  box.innerHTML = '';
+  for (const j of JOBS.values()){
+    const el = document.createElement('div');
+    el.className = 'job ' + j.state + (j.open ? ' click' : '');
+    const pct = j.pct == null ? null : Math.max(0, Math.min(100, j.pct));
+    el.innerHTML = `<div class="jic">${j.state === 'ok' ? ic('check') : ic(j.icon || 'print')}</div>
+      <div class="jtx"><b>${esc(j.title || '')}</b><span>${esc(j.txt || '')}</span>${j.state === 'run' ? `<i class="jbar${pct == null ? ' ind' : ''}"><u style="width:${pct == null ? 35 : pct}%"></u></i>` : ''}</div>
+      ${j.state === 'run' ? (j.cancel ? '<button class="jx" title="Annuler">×</button>' : '') : '<button class="jx" title="Fermer">×</button>'}`;
+    el.onclick = e => {
+      if (e.target.closest('.jx')){ e.stopPropagation(); if (j.state === 'run' && j.cancel) j.cancel(); else jobDel(j.id); return; }
+      if (j.open) j.open();
+    };
+    box.appendChild(el);
+  }
+  box.classList.toggle('on', JOBS.size > 0);
+}
 function modal(html, onMount){
   return new Promise(resolve => {
     const root = document.createElement('div'); root.className='modal';
@@ -3173,19 +3234,21 @@ async function printDoc(){
       const idx = printPages(); if (!idx) return toast('⚠️ Plage de pages invalide');
       store.set('pyramid-print', JSON.stringify(PRINT));
       close();
-      busy(true, 'Préparation de l’impression…');
+      const jid = 'print' + Date.now(), jt = 'Impression' + (S.name ? ' · ' + S.name : '');
+      jobSet(jid, { icon: 'print', title: jt, txt: 'Préparation des pages…', pct: 0 });
       try {
         const K = PRINT.quality/72, pages = [];
-        for (const i of idx){
+        for (const [n, i] of idx.entries()){
+          jobSet(jid, { txt: `Préparation de la page ${n + 1} / ${idx.length}…`, pct: Math.round(n / idx.length * 85) });
           const c = await pageImage(S.pages[i], K);
           if (PRINT.color === 'gray'){ const g = document.createElement('canvas'); g.width = c.width; g.height = c.height; const gx = g.getContext('2d'); gx.filter = 'grayscale(1)'; gx.drawImage(c, 0, 0); pages.push({ src:g.toDataURL('image/jpeg', 0.9), w:dims(S.pages[i]).dw, h:dims(S.pages[i]).dh }); }
           else pages.push({ src:c.toDataURL('image/jpeg', 0.92), w:dims(S.pages[i]).dw, h:dims(S.pages[i]).dh });
         }
-        busy(true, 'Envoi à l’imprimante…');
+        jobSet(jid, { txt: `Envoi à l’imprimante${PRINT.printer ? ' ' + PRINT.printer : ''}…`, pct: null });
         const r = await window.native.print(pages, { deviceName:PRINT.printer, copies:PRINT.copies, collate:PRINT.collate, color:PRINT.color === 'color', dpi:PRINT.quality, landscape:sheetOrient(idx) === 'landscape', duplexMode:PRINT.duplex, per:PRINT.per, fit:PRINT.fit, paper:PRINT.paper });
-        busy(false);
-        toast(r && r.ok ? '✅ Document envoyé à l’imprimante' : '❌ Impression annulée ou impossible' + (r && r.err ? ' (' + r.err + ')' : ''));
-      } catch(e){ console.error(e); busy(false); toast('❌ Impression impossible'); }
+        if (r && r.ok) jobSet(jid, { state: 'ok', txt: `${idx.length} page${idx.length > 1 ? 's' : ''} envoyée${idx.length > 1 ? 's' : ''} à l’imprimante` });
+        else jobSet(jid, { state: 'err', txt: 'Impression annulée ou impossible' + (r && r.err ? ' (' + r.err + ')' : '') });
+      } catch(e){ console.error(e); jobSet(jid, { state: 'err', txt: 'Impression impossible' }); }
     };
     draw();
   });
@@ -3440,6 +3503,31 @@ function openSupport(){
   (card, close) => { card.querySelector('[data-x]').onclick = () => close(); const a = card.querySelector('a.paybtn'); if (a) a.onclick = () => setTimeout(() => close(), 300); });
 }
 
+/* ================= Largeur de la barre d’outils (disposition Pro) ================= */
+(() => {
+  const grip = $('#railGrip'), rail = $('#rail'), root = document.documentElement;
+  const setC = n => { n = Math.max(1, Math.min(4, n | 0 || 1)); root.style.setProperty('--rcols', n); return n; };
+  setC(+store.get('pyramid-railc') || 1);
+  let drag = null;
+  grip.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return; e.preventDefault(); grip.setPointerCapture(e.pointerId);
+    const ib = parseFloat(getComputedStyle(rail).getPropertyValue('--ib')) || 30;
+    drag = { x: e.clientX, w: rail.getBoundingClientRect().width, cell: ib + 2 }; grip.classList.add('on'); hideTip();
+    document.body.style.cursor = 'col-resize';
+  });
+  grip.addEventListener('pointermove', e => {
+    if (!drag) return;
+    const w = drag.w + (e.clientX - drag.x);
+    drag.n = setC(Math.round((w - 18) / drag.cell));
+  });
+  const end = () => {
+    if (!drag) return; const n = drag.n; drag = null; grip.classList.remove('on'); document.body.style.cursor = '';
+    if (n) store.set('pyramid-railc', String(n));
+  };
+  grip.addEventListener('pointerup', end); grip.addEventListener('pointercancel', end);
+  grip.addEventListener('dblclick', () => { setC(1); store.set('pyramid-railc', '1'); });
+})();
+
 /* ================= Largeur des miniatures ================= */
 (() => {
   const grip = $('#sideGrip'), side = $('#side'), root = document.documentElement;
@@ -3682,9 +3770,10 @@ if (window.native && window.native.scanStart){
   $('#scanBtn').classList.remove('hidden'); $('#scanBig').classList.remove('hidden');
   $('#scanBtn').onclick = $('#scanBig').onclick = openScanner;
   window.native.onScan(async ev => {
-    if (ev.type === 'phone') scanStatus('📱 Téléphone connecté', true);
-    else if (ev.type === 'progress') scanStatus(`📥 Réception… ${ev.got} / ${ev.total} page${ev.total > 1 ? 's' : ''}`, true);
-    else if (ev.type === 'stopped') scanStatus('Scanner arrêté', false);
+    const pj = o => jobSet('phone', Object.assign({ icon: 'phone', title: 'Scan du téléphone', open: openScanner }, o));
+    if (ev.type === 'phone'){ scanStatus('📱 Téléphone connecté', true); pj({ state: 'run', txt: 'Téléphone connecté : en attente des pages…', pct: null }); }
+    else if (ev.type === 'progress'){ scanStatus(`📥 Réception… ${ev.got} / ${ev.total} page${ev.total > 1 ? 's' : ''}`, true); pj({ state: 'run', txt: `Réception de la page ${ev.got} / ${ev.total}…`, pct: Math.round(ev.got / ev.total * 100) }); }
+    else if (ev.type === 'stopped'){ scanStatus('Scanner arrêté', false); jobDel('phone'); }
     else if (ev.type === 'pages'){
       try{
         busy(true, 'Création du PDF…');
@@ -3694,6 +3783,7 @@ if (window.native && window.native.scanStart){
         busy(false);
         await openFiles([new File([bytes], name, { type: 'application/pdf' })], false);
         scanStatus(`✅ ${ev.pages.length} page${ev.pages.length > 1 ? 's' : ''} reçue${ev.pages.length > 1 ? 's' : ''} — prêt pour le scan suivant`, true);
+        jobSet('phone', { icon: 'phone', title: 'Scan du téléphone', state: 'ok', txt: `${ev.pages.length} page${ev.pages.length > 1 ? 's' : ''} reçue${ev.pages.length > 1 ? 's' : ''} et ouverte${ev.pages.length > 1 ? 's' : ''}`, open: openScanner });
         toast(`📄 Scan reçu : ${ev.pages.length} page${ev.pages.length > 1 ? 's' : ''}`);
       } catch(e){ busy(false); toast('⚠️ Scan reçu mais illisible'); }
     }
@@ -3722,11 +3812,59 @@ async function dsPagesToPdf(pages){
   }
   return new Uint8Array(await doc.save());
 }
+/* État gardé en dehors de la fenêtre : fermer la fenêtre (même par erreur, en cliquant à côté) n'arrête rien ;
+   en la rouvrant on retrouve la numérisation en cours et les pages déjà reçues. */
+Object.assign(DSCAN, { pages: [], status: { txt: '', on: false }, O: null, ui: null });
+const dsPlural = n => `${n} page${n > 1 ? 's' : ''}`;
+function dsStatus(txt, on){ DSCAN.status = { txt, on: !!on }; if (DSCAN.ui) DSCAN.ui.status(); }
+function dsJob(){
+  if (DSCAN.busy) return;
+  if (DSCAN.pages.length) jobSet('dscan', { icon: 'scanner', title: 'Numérisation', txt: `${dsPlural(DSCAN.pages.length)} prête${DSCAN.pages.length > 1 ? 's' : ''} : toucher pour ouvrir en PDF`, state: 'wait', open: openDevScan });
+  else jobDel('dscan');
+}
+async function dsStartScan(){
+  const O = DSCAN.O;
+  if (DSCAN.busy || !O.dev) return;
+  DSCAN.busy = true;
+  const msg = O.source === 'platen' ? 'Numérisation en cours…' : 'Numérisation des feuilles du chargeur…';
+  dsStatus('🖨️ ' + msg, true);
+  jobSet('dscan', { icon: 'scanner', title: 'Numérisation', txt: msg, state: 'run', pct: null, open: openDevScan, cancel: () => window.native.scannerCancel() });
+  DSCAN.ui && DSCAN.ui.refresh();
+  const r = await window.native.scannerScan(O.dev, { source: O.source, color: O.color, dpi: O.dpi, paper: O.paper }).catch(e => ({ ok: false, error: String(e) }));
+  DSCAN.busy = false;
+  if (r && r.ok && r.pages.length){
+    DSCAN.pages.push(...r.pages);
+    dsStatus(`✅ ${dsPlural(r.pages.length)} numérisée${r.pages.length > 1 ? 's' : ''}` + (O.source === 'platen' ? ' — pose la page suivante ou ouvre le PDF' : ''), true);
+    if (!DSCAN.ui) toast(`🖨️ ${dsPlural(r.pages.length)} numérisée${r.pages.length > 1 ? 's' : ''}`);
+    dsJob();
+  } else if (r && /annul/.test(r.error || '')){ dsStatus('Numérisation annulée', false); dsJob(); }
+  else {
+    dsStatus('⚠️ ' + ((r && r.error) || 'Aucune page reçue'), false);
+    if (DSCAN.pages.length) dsJob(); else jobSet('dscan', { icon: 'scanner', title: 'Numérisation', txt: (r && r.error) || 'Aucune page reçue', state: 'err', open: openDevScan });
+  }
+  DSCAN.ui && DSCAN.ui.refresh();
+}
+async function dsOpenPdf(){
+  const pages = DSCAN.pages;
+  if (!pages.length || DSCAN.busy) return false;
+  try {
+    busy(true, 'Création du PDF…');
+    const d = new Date(), z = n => String(n).padStart(2, '0');
+    const name = `Numérisation ${z(d.getDate())}-${z(d.getMonth() + 1)}-${d.getFullYear()} ${z(d.getHours())}h${z(d.getMinutes())}.pdf`;
+    const bytes = await dsPagesToPdf(pages);
+    busy(false);
+    const n = pages.length;
+    pages.forEach(p => p.url && URL.revokeObjectURL(p.url));
+    DSCAN.pages = []; dsStatus('', false);
+    jobSet('dscan', { icon: 'scanner', title: 'Numérisation', txt: `${dsPlural(n)} ouverte${n > 1 ? 's' : ''} en PDF`, state: 'ok', open: null });
+    await openFiles([new File([bytes], name, { type: 'application/pdf' })], false);
+    return true;
+  } catch (e) { busy(false); console.error(e); dsStatus('⚠️ Pages illisibles : ' + ((e && e.message) || e), false); return false; }
+}
 async function openDevScan(){
   if (DSCAN.open) return;
   DSCAN.open = true;
-  const O = Object.assign({ dev: '', source: 'platen', color: 'color', dpi: 300, paper: 'A4' }, dsLoad());
-  const pages = [];
+  const O = DSCAN.O || (DSCAN.O = Object.assign({ dev: '', source: 'platen', color: 'color', dpi: 300, paper: 'A4' }, dsLoad()));
   const seg = (k, opts) => `<div class="seg" data-dk="${k}">${opts.map(([v, l]) => `<button data-v="${v}" class="${String(O[k]) === String(v) ? 'on' : ''}">${l}</button>`).join('')}</div>`;
   await modal(`<h2>🖨️ Numériser depuis une imprimante</h2>
     <span class="lbl">Imprimante ou scanner</span>
@@ -3748,8 +3886,9 @@ async function openDevScan(){
     card.classList.add('dscard');
     const q = s => card.querySelector(s);
     const sel = q('[data-dev]'), st = q('[data-st]'), bScan = q('[data-scan]'), bOk = q('[data-ok]'), bRef = q('[data-refresh]');
-    const status = (txt, on) => { st.classList.toggle('on', !!on); st.querySelector('span').textContent = txt || ''; };
+    const ip = q('[data-ip]'), bAdd = q('[data-add]'), pgBox = q('[data-pages]');
     const save = () => dsSave({ dev: O.dev, source: O.source, color: O.color, dpi: O.dpi, paper: O.paper });
+    const local = (txt, on) => { st.classList.toggle('on', !!on); st.querySelector('span').textContent = txt || ''; };
     let info = null;
     const applyInfo = () => {
       card.querySelectorAll('[data-dk="source"] button').forEach(b => { b.style.display = !info || info.sources.includes(b.dataset.v) ? '' : 'none'; });
@@ -3762,38 +3901,60 @@ async function openDevScan(){
       info = null; applyInfo();
       if (!O.dev) return;
       const r = await window.native.scannerInfo(O.dev).catch(() => null);
-      if (r && r.ok) { info = r; applyInfo(); status(''); }
-      else if (r) status('⚠️ ' + r.error, false);
+      if (!DSCAN.ui) return;
+      if (r && r.ok) { info = r; applyInfo(); if (!DSCAN.busy && !DSCAN.pages.length) dsStatus('', false); }
+      else if (r && !DSCAN.busy) dsStatus('⚠️ ' + r.error, false);
     };
+    const drawPages = () => {
+      pgBox.innerHTML = '';
+      DSCAN.pages.forEach((p, i) => {
+        const el = document.createElement('div'); el.className = 'dspg';
+        if (p.type === 'pdf') el.textContent = 'PDF';
+        else { if (!p.url) p.url = URL.createObjectURL(new Blob([p.data], { type: p.type === 'png' ? 'image/png' : 'image/jpeg' })); el.innerHTML = `<img src="${p.url}" alt="">`; }
+        el.insertAdjacentHTML('beforeend', `<b>${i + 1}</b><button title="Retirer cette page">×</button>`);
+        el.querySelector('button').onclick = () => { if (p.url) URL.revokeObjectURL(p.url); DSCAN.pages.splice(i, 1); drawPages(); dsJob(); };
+        pgBox.appendChild(el);
+      });
+      bOk.disabled = !DSCAN.pages.length || DSCAN.busy;
+      bOk.querySelector('span').textContent = DSCAN.pages.length ? `Ouvrir en PDF (${dsPlural(DSCAN.pages.length)})` : 'Ouvrir en PDF';
+      pgBox.scrollLeft = pgBox.scrollWidth;
+    };
+    const refresh = () => {
+      bScan.querySelector('span').textContent = DSCAN.busy ? 'Annuler' : (DSCAN.pages.length ? 'Numériser la suite' : 'Numériser');
+      sel.disabled = bRef.disabled = bAdd.disabled = DSCAN.busy;
+      bScan.disabled = !O.dev && !DSCAN.busy;
+      drawPages();
+      local(DSCAN.status.txt, DSCAN.status.on);
+    };
+    DSCAN.ui = { refresh, status: () => local(DSCAN.status.txt, DSCAN.status.on) };
     const fill = list => {
       DSCAN.list = list;
-      if (!list.length){ sel.innerHTML = '<option value="">Aucune imprimante trouvée</option>'; O.dev = ''; status('Allume l’imprimante, vérifie qu’elle est sur le même réseau, ou ajoute son adresse IP.', false); }
+      if (!list.length){ sel.innerHTML = '<option value="">Aucune imprimante trouvée</option>'; O.dev = ''; if (!DSCAN.busy) dsStatus('Allume l’imprimante, vérifie qu’elle est sur le même réseau, ou ajoute son adresse IP.', false); }
       else {
         sel.innerHTML = list.map(d => `<option value="${esc(d.id)}">${d.kind === 'escl' ? '📶' : '🖥️'} ${esc(d.name)}${d.host && d.kind === 'escl' ? ' — ' + esc(d.host) : ''}</option>`).join('');
         if (!list.some(d => d.id === O.dev)) O.dev = list[0].id;
-        sel.value = O.dev; status('');
+        sel.value = O.dev;
+        if (!DSCAN.busy && /Recherche/.test(DSCAN.status.txt)) dsStatus('', false);
       }
-      bScan.disabled = !O.dev;
-      loadInfo();
+      refresh(); loadInfo();
     };
     const search = async () => {
       bRef.classList.add('spin'); bRef.disabled = true; bScan.disabled = true;
-      status('🔎 Recherche des imprimantes sur le réseau…', true);
+      if (!DSCAN.busy) dsStatus('🔎 Recherche des imprimantes sur le réseau…', true);
       const list = await window.native.scanners().catch(() => []);
-      bRef.classList.remove('spin'); bRef.disabled = false;
-      if (DSCAN.open) fill(list || []);
+      bRef.classList.remove('spin');
+      if (DSCAN.ui) fill(list || []);
     };
     sel.onchange = () => { O.dev = sel.value; save(); loadInfo(); };
     bRef.onclick = search;
-    const ip = q('[data-ip]'), bAdd = q('[data-add]');
     const add = async () => {
       const a = ip.value.trim(); if (!a) return ip.focus();
-      bAdd.disabled = true; status('🔎 Connexion à ' + a + '…', true);
+      bAdd.disabled = true; dsStatus('🔎 Connexion à ' + a + '…', true);
       const r = await window.native.scannerAdd(a).catch(e => ({ ok: false, error: String(e) }));
       bAdd.disabled = false;
-      if (!r || !r.ok) return status('⚠️ ' + ((r && r.error) || 'Adresse injoignable'), false);
+      if (!r || !r.ok) return dsStatus('⚠️ ' + ((r && r.error) || 'Adresse injoignable'), false);
       const list = (DSCAN.list || []).filter(d => d.id !== r.id); list.unshift(r);
-      O.dev = r.id; save(); ip.value = ''; fill(list);
+      O.dev = r.id; save(); ip.value = ''; dsStatus('', false); fill(list);
       toast('✅ ' + r.name + ' ajouté');
     };
     bAdd.onclick = add; ip.onkeydown = e => { if (e.key === 'Enter') add(); };
@@ -3801,65 +3962,28 @@ async function openDevScan(){
       const b = e.target.closest('button'); if (!b || DSCAN.busy) return;
       const k = g.dataset.dk; O[k] = k === 'dpi' ? +b.dataset.v : b.dataset.v; save(); applyInfo();
     });
-    const pgBox = q('[data-pages]');
-    const drawPages = () => {
-      pgBox.innerHTML = '';
-      pages.forEach((p, i) => {
-        const el = document.createElement('div'); el.className = 'dspg';
-        if (p.type === 'pdf') el.textContent = 'PDF';
-        else { if (!p.url) p.url = URL.createObjectURL(new Blob([p.data], { type: p.type === 'png' ? 'image/png' : 'image/jpeg' })); el.innerHTML = `<img src="${p.url}" alt="">`; }
-        el.insertAdjacentHTML('beforeend', `<b>${i + 1}</b><button title="Retirer cette page">×</button>`);
-        el.querySelector('button').onclick = () => { if (p.url) URL.revokeObjectURL(p.url); pages.splice(i, 1); drawPages(); };
-        pgBox.appendChild(el);
-      });
-      bOk.disabled = !pages.length || DSCAN.busy;
-      bOk.querySelector('span').textContent = pages.length ? `Ouvrir en PDF (${pages.length} page${pages.length > 1 ? 's' : ''})` : 'Ouvrir en PDF';
-      pgBox.scrollLeft = pgBox.scrollWidth;
+    bScan.onclick = () => {
+      if (DSCAN.busy){ window.native.scannerCancel(); dsStatus('Annulation…', true); return; }
+      if (!O.dev) return dsStatus('⚠️ Choisis une imprimante', false);
+      dsStartScan();
     };
-    const setBusy = on => {
-      DSCAN.busy = on;
-      bScan.querySelector('span').textContent = on ? 'Annuler' : (pages.length ? 'Numériser la suite' : 'Numériser');
-      sel.disabled = bRef.disabled = bAdd.disabled = on;
-      bOk.disabled = on || !pages.length;
-    };
-    DSCAN.onEvent = ev => { if (ev.type === 'page' && DSCAN.busy) status(`📥 Page ${ev.n} reçue…`, true); };
-    bScan.onclick = async () => {
-      if (DSCAN.busy){ window.native.scannerCancel(); status('Annulation…', true); return; }
-      if (!O.dev) return status('⚠️ Choisis une imprimante', false);
-      setBusy(true);
-      status(O.source === 'platen' ? '🖨️ Numérisation en cours…' : '🖨️ Numérisation des feuilles du chargeur…', true);
-      const r = await window.native.scannerScan(O.dev, { source: O.source, color: O.color, dpi: O.dpi, paper: O.paper }).catch(e => ({ ok: false, error: String(e) }));
-      setBusy(false);
-      if (!DSCAN.open) return;
-      if (r && r.ok && r.pages.length){
-        pages.push(...r.pages); drawPages(); setBusy(false);
-        status(`✅ ${r.pages.length} page${r.pages.length > 1 ? 's' : ''} numérisée${r.pages.length > 1 ? 's' : ''}` + (O.source === 'platen' ? ' — pose la page suivante ou ouvre le PDF' : ''), true);
-      } else if (r && /annul/.test(r.error || '')) status('Numérisation annulée', false);
-      else status('⚠️ ' + ((r && r.error) || 'Aucune page reçue'), false);
-    };
-    bOk.onclick = async () => {
-      if (!pages.length || DSCAN.busy) return;
-      try {
-        busy(true, 'Création du PDF…');
-        const d = new Date(), z = n => String(n).padStart(2, '0');
-        const name = `Numérisation ${z(d.getDate())}-${z(d.getMonth() + 1)}-${d.getFullYear()} ${z(d.getHours())}h${z(d.getMinutes())}.pdf`;
-        const bytes = await dsPagesToPdf(pages);
-        busy(false); close(true);
-        await openFiles([new File([bytes], name, { type: 'application/pdf' })], false);
-        toast(`📄 ${pages.length} page${pages.length > 1 ? 's' : ''} numérisée${pages.length > 1 ? 's' : ''}`);
-      } catch (e) { busy(false); console.error(e); status('⚠️ Pages illisibles : ' + ((e && e.message) || e), false); }
-    };
-    q('[data-x]').onclick = () => { if (DSCAN.busy) window.native.scannerCancel(); close(null); };
-    applyInfo();
+    bOk.onclick = async () => { if (await dsOpenPdf()) close(true); };
+    q('[data-x]').onclick = () => close(null);   // fermer n'arrête pas la numérisation
+    applyInfo(); refresh();
     if (DSCAN.list) fill(DSCAN.list); else search();
   });
-  if (DSCAN.busy) window.native.scannerCancel();
-  DSCAN.open = false; DSCAN.busy = false; DSCAN.onEvent = null;
+  DSCAN.open = false; DSCAN.ui = null;
+  dsJob();
 }
 if (window.native && window.native.scannerScan){
   $('#rScan').classList.remove('hidden');
   $('#rScan').onclick = openDevScan;
-  window.native.onScanner(ev => DSCAN.onEvent && DSCAN.onEvent(ev));
+  window.native.onScanner(ev => {
+    if (ev.type === 'page' && DSCAN.busy){
+      dsStatus(`📥 ${ev.n === 1 ? 'Page 1 reçue' : `Page ${ev.n} reçue`}…`, true);
+      jobSet('dscan', { txt: `Page ${ev.n} reçue…` });
+    }
+  });
 }
 
 /* ================= Mises à jour (bouton en haut) ================= */

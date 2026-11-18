@@ -2,7 +2,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-module.exports = function fakeEscl({ port = 0, name = 'Imprimante Test MFP', jpeg, mdns = true, pdfOnly = false } = {}){
+module.exports = function fakeEscl({ port = 0, name = 'Imprimante Test MFP', jpeg, mdns = true, pdfOnly = false, delay = 0 } = {}){
   const img = jpeg || fs.readFileSync(path.join(__dirname, 'docs', 'scan-ocr.jpg'));
   const log = { jobs: [], settings: [] };
   let n = 0;
@@ -43,6 +43,7 @@ module.exports = function fakeEscl({ port = 0, name = 'Imprimante Test MFP', jpe
       const j = jobs.get(m[1]); if (!j || j.left <= 0) { res.writeHead(404); return res.end(); }
       if (j.busy-- > 0) { res.writeHead(503); return res.end(); }        // simule « scanner en train de lire la page »
       j.left--;
+      if (delay) { setTimeout(() => { res.writeHead(200, { 'Content-Type': 'image/jpeg' }); res.end(img); }, delay); return; }
       if (pdfOnly) { res.writeHead(200, { 'Content-Type': 'application/pdf' }); return res.end(module.exports.pdf); }
       res.writeHead(200, { 'Content-Type': 'image/jpeg' }); return res.end(img);
     }
