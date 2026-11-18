@@ -18,7 +18,7 @@ Pyramid PDF lit, modifie et signe tes PDF, simplement et hors ligne.
 
 📄 Ajoute, pivote, réorganise et fusionne les pages. Ouvre aussi les images, Word, Excel et TIFF.
 
-🖨️ Imprime avec aperçu et tous les réglages.
+🖨️ Imprime avec aperçu et tous les réglages, et numérise directement depuis ton imprimante ou ton scanner : vitre, chargeur, recto verso.
 
 🎨 Thèmes, couleurs et dispositions à ton goût, onglets pour plusieurs documents.
 
@@ -33,7 +33,7 @@ Déplacement et suppression des images du document
 Lignes d'alignement et aimantation
 Ajout, suppression, rotation et réorganisation des pages
 Ouverture de PDF, Word, Excel, images, TIFF et texte
-Impression avec aperçu et réglages complets
+Impression et numérisation depuis ton imprimante ou scanner
 Recherche et remplacement de texte
 Onglets pour plusieurs documents
 Thèmes et dispositions personnalisables
@@ -47,6 +47,9 @@ signature électronique
 signer PDF
 fiche de paie
 facture
+
+## 🆕 Notes de version (1.4.4)
+Nouveau : numérise directement depuis ton imprimante multifonction ou ton scanner, avec le bouton à côté d'Imprimer. Vitre, chargeur ou recto verso, couleur, gris ou noir et blanc : toutes les pages sont réunies en un seul PDF.
 
 ## 🆕 Notes de version (1.4.3)
 Nouveau : scanne tes documents avec ton téléphone (QR code) et reçois-les en PDF sur l'ordinateur. Les pages scannées sont lues automatiquement : leur texte se modifie comme un PDF normal. Impression à la taille réelle, icône plus nette dans la barre des tâches, corrections.
