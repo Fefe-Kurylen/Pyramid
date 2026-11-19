@@ -1,0 +1,795 @@
+import SwiftUI
+import WebKit
+
+enum SettingsRoute: String, Hashable, CaseIterable, Identifiable {
+    case support, appearance, toolbar, address, tabs, search, privacy, reading, energy, about
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .support: return L("Soutenir Qafila")
+        case .appearance: return L("Apparence")
+        case .toolbar: return L("Barre d'outils")
+        case .address: return L("Barre d'adresse")
+        case .tabs: return L("Onglets")
+        case .search: return L("Recherche")
+        case .privacy: return L("Confidentialité")
+        case .reading: return L("Lecture")
+        case .energy: return L("Énergie")
+        case .about: return L("À propos")
+        }
+    }
+    var symbol: String {
+        switch self {
+        case .support: return "heart.fill"
+        case .appearance: return "circle.lefthalf.filled"
+        case .toolbar: return "dock.rectangle"
+        case .address: return "link"
+        case .tabs: return "square.on.square"
+        case .search: return "magnifyingglass"
+        case .privacy: return "shield.lefthalf.filled"
+        case .reading: return "text.alignleft"
+        case .energy: return "battery.75percent"
+        case .about: return "info.circle"
+        }
+    }
+    var tint: Color {
+        switch self {
+        case .support: return Color(red: 0.93, green: 0.30, blue: 0.45)
+        case .appearance: return Color(red: 0.55, green: 0.42, blue: 0.86)
+        case .toolbar: return Color(red: 0.30, green: 0.33, blue: 0.40)
+        case .address: return Color(red: 0.22, green: 0.48, blue: 0.86)
+        case .tabs: return Color(red: 0.95, green: 0.55, blue: 0.20)
+        case .search: return Color(red: 0.42, green: 0.45, blue: 0.50)
+        case .privacy: return Color(red: 0.20, green: 0.62, blue: 0.42)
+        case .reading: return Color(red: 0.80, green: 0.36, blue: 0.30)
+        case .energy: return Color(red: 0.36, green: 0.66, blue: 0.24)
+        case .about: return Color(red: 0.55, green: 0.55, blue: 0.58)
+        }
+    }
+}
+
+/// Réglages : tout ce que Quiche permet d'ajuster, page par page, avec un aperçu en direct de la barre.
+struct SettingsView: View {
+    @EnvironmentObject var store: BrowserStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var path: [SettingsRoute] = []
+
+    var body: some View {
+        NavigationStack(path: $path) {
+            List {
+                Section {
+                    NavigationLink { ToolbarGalleryView(embedded: true) } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "square.grid.2x2").font(.system(size: 17, weight: store.settings.buttonWeight.fontWeight)).frame(width: 28)
+                            Text("Galerie de barres")
+                        }
+                    }
+                    link(.support)
+                }
+                Section { ForEach([SettingsRoute.appearance, .toolbar, .address, .tabs]) { link($0) } }
+                Section { ForEach([SettingsRoute.search, .privacy, .reading, .energy]) { link($0) } }
+                Section { link(.about) }
+            }
+            .navigationTitle("Réglages")
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(for: SettingsRoute.self) { page($0) }
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("OK") { dismiss() }.fontWeight(.semibold) } }
+        }
+        .onAppear { if let r = store.settingsRoute { path = [r] } }
+    }
+
+    private func link(_ r: SettingsRoute) -> some View {
+        NavigationLink(value: r) {
+            HStack(spacing: 12) {
+                Image(systemName: r.symbol)
+                    .font(.system(size: 17, weight: store.settings.buttonWeight.fontWeight))
+                    .foregroundStyle(r == .support ? r.tint : Color.primary)
+                    .frame(width: 28)
+                Text(r.title)
+                Spacer()
+                Text(detail(r)).font(.system(size: 15)).foregroundStyle(.secondary).lineLimit(1)
+            }
+        }
+    }
+
+    private func detail(_ r: SettingsRoute) -> String {
+        let s = store.settings
+        switch r {
+        case .support:
+            // Mode Stripe : pas de prix (contribution libre sur la page Stripe).
+            if store.support.usesStripe { return "" }
+            return store.support.isSupporter ? L("Merci ♥") : L("%@/mois", store.support.price)
+        case .appearance: return s.appearance.label
+        case .toolbar: return s.toolbar.position.label
+        case .address: return s.addressStyle.label
+        case .tabs: return s.tabsLayout.label
+        case .search:
+            switch s.searchEngine {
+            case .searxng: return "SearXNG"
+            case .qafila: return "Qafila"
+            default: return s.searchEngine.label
+            }
+        case .privacy: return s.blockerEnabled ? L("Bloqueur actif") : L("Bloqueur coupé")
+        case .reading: return "\(Int((s.textZoom * 100).rounded())) %"
+        case .energy, .about: return ""
+        }
+    }
+
+    @ViewBuilder private func page(_ r: SettingsRoute) -> some View {
+        switch r {
+        case .support: SupportSettings()
+        case .appearance: AppearanceSettings()
+        case .toolbar: ToolbarSettings()
+        case .address: AddressSettings()
+        case .tabs: TabsSettings()
+        case .search: SearchSettings()
+        case .privacy: PrivacySettings()
+        case .reading: ReadingSettings()
+        case .energy: EnergySettings()
+        case .about: AboutSettings()
+        }
+    }
+}
+
+// MARK: - Aperçu en direct
+
+/// Mini-page fictive + la vraie barre, rendue avec les réglages courants (même habillage que l'écran : verre, pilule, transparence).
+struct ChromePreview: View {
+    @EnvironmentObject var store: BrowserStore
+    @Environment(\.colorScheme) private var scheme
+    @StateObject private var editor = AddressEditModel()
+
+    var body: some View {
+        let s = store.settings
+        let palette = ChromePalette.make(s, scheme: scheme, site: nil)
+        let top = s.toolbar.position == .top
+        let frame = RoundedRectangle(cornerRadius: 12, style: .continuous)
+        Group {
+            if s.toolbar.style == .floating {
+                // Flottante : la barre se pose sur la page à sa marge réelle ; rien ne rogne son ombre ni son rayon.
+                ZStack(alignment: top ? .top : .bottom) {
+                    page(alignment: top ? .bottomLeading : .topLeading).frame(height: 196)
+                        .background(Color(.systemBackground))
+                        .clipShape(frame)
+                        .overlay(frame.strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5))
+                    bar(palette).padding(BrowserView.floatMargin)
+                }
+            } else {
+                VStack(spacing: 0) {
+                    if top { bar(palette) }
+                    page(alignment: .leading).frame(height: 92)
+                    if !top { bar(palette) }
+                }
+                .background(Color(.systemBackground))
+                .clipShape(frame)
+                .overlay(frame.strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5))
+            }
+        }
+        .padding(.vertical, 6)
+        .allowsHitTesting(false)
+        .animation(.easeInOut(duration: 0.2), value: s)
+    }
+
+    private func bar(_ palette: ChromePalette) -> some View {
+        let s = store.settings
+        return ChromeBar(editor: editor, singleRow: false, atTop: s.toolbar.position == .top)
+            .padding(.bottom, 6)
+            .modifier(ChromeDressing(palette: palette, settings: s))
+            .background(ChromeBackground(palette: palette, style: s.toolbar.style, transparency: s.glassTransparency))
+    }
+
+    private func page(alignment: Alignment) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            RoundedRectangle(cornerRadius: 3).fill(Color.primary.opacity(0.75)).frame(width: 170, height: 12)
+            RoundedRectangle(cornerRadius: 3).fill(Color.primary.opacity(0.12)).frame(height: 7)
+            RoundedRectangle(cornerRadius: 3).fill(Color.primary.opacity(0.12)).frame(height: 7)
+            RoundedRectangle(cornerRadius: 3).fill(Color.primary.opacity(0.12)).frame(width: 210, height: 7)
+            RoundedRectangle(cornerRadius: 3).fill(Color.primary.opacity(0.12)).frame(height: 7)
+            RoundedRectangle(cornerRadius: 3).fill(Color.primary.opacity(0.12)).frame(width: 140, height: 7)
+        }
+        .padding(.horizontal, 18).padding(.vertical, 18)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment)
+    }
+}
+
+// MARK: - Composants
+
+struct SwatchRow<T: Hashable & Identifiable>: View {
+    let items: [T]
+    @Binding var selection: T
+    let color: (T) -> Color?
+    let label: (T) -> String
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 14) {
+                ForEach(items) { item in
+                    Button { selection = item } label: {
+                        VStack(spacing: 6) {
+                            ZStack {
+                                if let c = color(item) {
+                                    Circle().fill(c)
+                                } else {
+                                    Circle().fill(AngularGradient(colors: [.orange, .pink, .purple, .blue, .teal, .green, .orange], center: .center))
+                                    Text("A").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
+                                }
+                                Circle().strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
+                            }
+                            .frame(width: 34, height: 34)
+                            .padding(3)
+                            .overlay(Circle().strokeBorder(selection == item ? Color.accentColor : .clear, lineWidth: 2))
+                            Text(label(item)).font(.system(size: 10.5)).foregroundStyle(selection == item ? .primary : .secondary).lineLimit(1)
+                        }
+                        .frame(minWidth: 46)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.vertical, 6).padding(.horizontal, 2)
+        }
+    }
+}
+
+/// Liste à cocher (comme les réglages iOS / Quiche).
+struct CheckList<T: Hashable & Identifiable>: View {
+    let items: [T]
+    @Binding var selection: T
+    let label: (T) -> String
+    var detail: ((T) -> String?)? = nil
+
+    var body: some View {
+        ForEach(items) { item in
+            Button { selection = item } label: {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(label(item)).foregroundStyle(.primary)
+                        if let d = detail?(item) { Text(d).font(.system(size: 12)).foregroundStyle(.secondary) }
+                    }
+                    Spacer()
+                    if selection == item { Image(systemName: "checkmark").font(.system(size: 14, weight: .semibold)).foregroundStyle(Color.accentColor) }
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+    }
+}
+
+struct HostListView: View {
+    @EnvironmentObject var store: BrowserStore
+    let keyPath: WritableKeyPath<Settings, Set<String>>
+    let title: String
+    let footer: String
+    @State private var newHost = ""
+
+    var body: some View {
+        List {
+            Section {
+                HStack {
+                    TextField("exemple.com", text: $newHost).keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
+                        .onSubmit(add)
+                    Button("Ajouter", action: add).disabled(newHost.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            } footer: { Text(footer) }
+            Section {
+                ForEach(store.settings[keyPath: keyPath].sorted(), id: \.self) { h in Text(h) }
+                    .onDelete { idx in
+                        let sorted = store.settings[keyPath: keyPath].sorted()
+                        for i in idx { store.settings[keyPath: keyPath].remove(sorted[i]) }
+                    }
+                if store.settings[keyPath: keyPath].isEmpty { Text("Aucun site").foregroundStyle(.secondary) }
+            }
+        }
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func add() {
+        var h = newHost.trimmingCharacters(in: .whitespaces).lowercased()
+        if let u = URL(string: h.contains("://") ? h : "https://" + h), let host = u.host { h = host }
+        guard !h.isEmpty else { return }
+        store.settings[keyPath: keyPath].insert(h)
+        newHost = ""
+    }
+}
+
+// MARK: - Apparence
+
+struct AppearanceSettings: View {
+    @EnvironmentObject var store: BrowserStore
+    @State private var showSupport = false
+
+    var body: some View {
+        List {
+            Section { ChromePreview().listRowInsets(EdgeInsets()).listRowBackground(Color.clear) }
+            Section("Thème") {
+                Picker("Thème", selection: $store.settings.appearance) { ForEach(Appearance.allCases) { Text($0.label).tag($0) } }
+                    .pickerStyle(.segmented)
+            }
+            Section("Couleur d'accent") {
+                SwatchRow(items: AccentColor.allCases, selection: $store.settings.accent, color: { $0.color }, label: { $0.label })
+            }
+            Section {
+                SwatchRow(items: BarColor.allCases, selection: $store.settings.barColorLight, color: { $0.color }, label: { $0 == .auto ? L("Site") : $0.label })
+            } header: { Text("Barre — mode clair") }
+            Section {
+                SwatchRow(items: BarColor.allCases, selection: $store.settings.barColorDark, color: { $0.color }, label: { $0 == .auto ? L("Site") : $0.label })
+            } header: { Text("Barre — mode sombre") } footer: { Text("« Site » reprend la couleur de thème du site visité. Les icônes passent en clair ou en sombre automatiquement.") }
+            Section {
+                Picker("Style", selection: $store.settings.toolbar.style) { ForEach(ToolbarStyle.allCases) { Text($0.label).tag($0) } }
+                    .pickerStyle(.segmented)
+            } header: { Text("Style de la barre") } footer: {
+                Text("Classique : couleur pleine. Verre : translucide. Flottante : barre arrondie détachée des bords, la page passe autour.")
+            }
+            if store.settings.toolbar.style != .classic {
+                Section {
+                    VStack(spacing: 10) {
+                        HStack {
+                            Text("Transparence")
+                            Spacer()
+                            Text("\(Int((store.settings.glassTransparency * 100).rounded())) %").foregroundStyle(.secondary).monospacedDigit()
+                        }
+                        HStack(spacing: 12) {
+                            Image(systemName: "circle.fill").font(.system(size: 11)).foregroundStyle(.secondary)
+                            Slider(value: $store.settings.glassTransparency, in: 0...1, step: 0.05)
+                            Image(systemName: "circle.dotted").font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                } footer: { Text("Ajuste la transparence du verre de la barre.") }
+            }
+            Section {
+                HStack(spacing: 0) {
+                    ForEach(AppIconChoice.allCases) { icon in
+                        let locked = icon.supportersOnly && !store.support.goldUnlocked
+                        Button {
+                            if locked { showSupport = true } else { store.settings.appIcon = icon }
+                        } label: {
+                            VStack(spacing: 6) {
+                                Image(icon.preview).resizable().frame(width: 52, height: 52)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.primary.opacity(0.1), lineWidth: 0.5))
+                                    .overlay(alignment: .bottomTrailing) {
+                                        if locked {
+                                            Image(systemName: "lock.fill").font(.system(size: 9, weight: .bold)).foregroundStyle(.white)
+                                                .frame(width: 18, height: 18).background(Circle().fill(Color.black.opacity(0.75))).offset(x: 4, y: 4)
+                                        }
+                                    }
+                                    .padding(3)
+                                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(store.settings.appIcon == icon ? Color.accentColor : .clear, lineWidth: 2))
+                                Text(icon.label).font(.system(size: 11)).foregroundStyle(store.settings.appIcon == icon ? .primary : .secondary)
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.vertical, 6)
+            } header: { Text("Icône de l'app") } footer: {
+                // Mode Stripe : l'icône Or est pour tout le monde, pas de mention « réservée aux abonnés ».
+                if !store.support.usesStripe {
+                    Text(store.support.isSupporter ? L("Merci de soutenir Qafila ♥ L'icône Or est à vous.") : L("L'icône Or est offerte aux personnes qui soutiennent Qafila (%@/mois).", store.support.price))
+                }
+            }
+            Section { Toggle("Vibrations", isOn: $store.settings.haptics) } footer: { Text("Retour haptique discret à l'ouverture, à la fermeture et sur les boutons.") }
+        }
+        .navigationTitle("Apparence")
+        .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showSupport) {
+            NavigationStack {
+                SupportSettings()
+                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("OK") { showSupport = false }.fontWeight(.semibold) } }
+            }
+            .environmentObject(store)
+        }
+    }
+}
+
+// MARK: - Barre d'outils
+
+struct ToolbarSettings: View {
+    @EnvironmentObject var store: BrowserStore
+
+    var body: some View {
+        List {
+            Section { ChromePreview().listRowInsets(EdgeInsets()).listRowBackground(Color.clear) }
+            Section {
+                NavigationLink { ToolbarEditorView(embedded: true) } label: { Label("Boutons de la barre et du menu", systemImage: "slider.horizontal.3") }
+                NavigationLink { ToolbarGalleryView(embedded: true) } label: { Label("Galerie de barres", systemImage: "square.grid.2x2") }
+            }
+            Section("Position") {
+                Picker("Position", selection: $store.settings.toolbar.position) { ForEach(ToolbarPosition.allCases) { Text($0.label).tag($0) } }
+                    .pickerStyle(.segmented)
+                Toggle("Barre en haut en paysage", isOn: $store.settings.landscapeTopBar)
+            }
+            Section("Icônes") {
+                Picker("Épaisseur", selection: $store.settings.buttonWeight) { ForEach(ButtonWeight.allCases) { Text($0.label).tag($0) } }
+                    .pickerStyle(.segmented)
+                HStack {
+                    Text("Bouton menu")
+                    Spacer()
+                    ForEach(MenuIconStyle.allCases) { m in
+                        Button { store.settings.menuIcon = m } label: {
+                            Image(systemName: m.symbol).font(.system(size: 19, weight: store.settings.buttonWeight.fontWeight))
+                                .frame(width: 44, height: 36)
+                                .background(RoundedRectangle(cornerRadius: 9).fill(store.settings.menuIcon == m ? Color.accentColor.opacity(0.15) : .clear))
+                                .foregroundStyle(store.settings.menuIcon == m ? Color.accentColor : .primary)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(m.label)
+                    }
+                }
+            }
+            Section {
+                Picker("Au défilement", selection: $store.settings.scrollBehavior) { ForEach(ScrollBehavior.allCases) { Text($0.label).tag($0) } }
+                    .pickerStyle(.segmented)
+            } header: { Text("Au défilement") } footer: {
+                Text(store.settings.scrollBehavior == .fixed ? L("La barre reste toujours visible.") :
+                     store.settings.scrollBehavior == .shrink ? L("La barre se réduit au nom du site ; touchez-le pour la rouvrir.") :
+                     "La barre disparaît pendant la lecture et revient en remontant.")
+            }
+            Section {
+                Toggle("Balayer depuis le bord pour naviguer", isOn: $store.settings.edgeSwipeNavigation)
+            } footer: { Text("Glissez depuis le bord gauche pour revenir en arrière, depuis le bord droit pour avancer.") }
+        }
+        .navigationTitle("Barre d'outils")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+// MARK: - Barre d'adresse
+
+struct AddressSettings: View {
+    @EnvironmentObject var store: BrowserStore
+
+    var body: some View {
+        List {
+            Section { ChromePreview().listRowInsets(EdgeInsets()).listRowBackground(Color.clear) }
+            Section {
+                CheckList(items: AddressStyle.allCases, selection: $store.settings.addressStyle, label: { $0.label }, detail: { style in
+                    switch style {
+                    case .card: return L("Domaine en capitales au-dessus du titre")
+                    case .fullURL: return L("L'adresse complète, sur une ligne")
+                    case .domainPill: return L("Juste le nom du site, centré")
+                    case .titleReading: return L("Le titre et le temps de lecture")
+                    case .centered: return L("Texte centré, sans fond")
+                    case .hidden: return L("Aucune adresse : la barre ne garde que les icônes")
+                    }
+                })
+            } header: { Text("Style") } footer: {
+                Text("Astuce : ajoutez le bouton « Adresse » à la barre d'outils pour l'afficher sur la même ligne que les icônes.")
+            }
+            Section("Afficher") {
+                Toggle("Icône du site", isOn: $store.settings.addressShowsFavicon)
+                Toggle("Temps de lecture", isOn: $store.settings.addressShowsReadingTime)
+            }
+            Section("Gestes") {
+                Picker("Toucher", selection: $store.settings.addressTap) { ForEach(AddressTapAction.allCases) { Text($0.label).tag($0) } }
+                Picker("Appui long", selection: $store.settings.addressLongPress) { ForEach(AddressLongPressAction.allCases) { Text($0.label).tag($0) } }
+            }
+        }
+        .navigationTitle("Barre d'adresse")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+// MARK: - Onglets
+
+struct TabsSettings: View {
+    @EnvironmentObject var store: BrowserStore
+
+    var body: some View {
+        List {
+            Section("Affichage") {
+                Picker("Disposition", selection: $store.settings.tabsLayout) { ForEach(TabsLayout.allCases) { Text($0.label).tag($0) } }
+                    .pickerStyle(.segmented)
+                Picker("Vignettes", selection: $store.settings.thumbnailSize) { ForEach(ThumbnailSize.allCases) { Text($0.label).tag($0) } }
+                Picker("Trier par", selection: $store.settings.tabsSort) { ForEach(TabsSort.allCases) { Text($0.label).tag($0) } }
+                Toggle("Grouper par site", isOn: $store.settings.groupTabsByDomain)
+            }
+            Section {
+                Toggle("Mode confort", isOn: $store.settings.comfortMode)
+            } footer: { Text("La liste des onglets s'ouvre par le bas, à portée de pouce.") }
+            Section("Nouvel onglet") {
+                Picker("Ouvre", selection: $store.settings.newTabPage) { ForEach(NewTabPage.allCases) { Text($0.label).tag($0) } }
+                if store.settings.newTabPage == .custom {
+                    TextField("https://…", text: $store.settings.newTabCustomURL).keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
+                }
+            }
+            Section {
+                Picker("Fermer automatiquement", selection: $store.settings.autoCloseTabs) { ForEach(AutoCloseTabs.allCases) { Text($0.label).tag($0) } }
+            } footer: { Text("Les onglets que vous n'avez pas ouverts depuis ce délai sont fermés au retour dans l'app.") }
+        }
+        .navigationTitle("Onglets")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+// MARK: - Recherche
+
+struct SearchSettings: View {
+    @EnvironmentObject var store: BrowserStore
+
+    var body: some View {
+        List {
+            Section("Moteur") {
+                CheckList(items: SearchEngine.selectable, selection: $store.settings.searchEngine, label: { $0.label })
+            }
+            if store.settings.searchEngine.needsBaseURL {
+                Section {
+                    TextField(store.settings.searchEngine == .qafila ? "https://mon-qafila.exemple.fr" : "https://ma-instance-searxng.fr", text: $store.settings.searchBaseURL)
+                        .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
+                } header: { Text("Adresse de l'instance") }
+            }
+            if store.settings.searchEngine == .custom {
+                Section {
+                    TextField("https://exemple.com/search?q=%s", text: $store.settings.customSearchTemplate)
+                        .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
+                } header: { Text("Modèle d'adresse") } footer: { Text("%s est remplacé par votre recherche.") }
+            }
+            Section {
+                Picker("Suggestions", selection: $store.settings.suggestions) { ForEach(SuggestionsMode.allCases) { Text($0.label).tag($0) } }
+                Toggle("Masquer les réponses IA", isOn: $store.settings.hideAIAnswers)
+            } footer: { Text("Les réponses générées par IA sont retirées des résultats Google et Brave.") }
+        }
+        .navigationTitle("Recherche")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+// MARK: - Confidentialité
+
+struct PrivacySettings: View {
+    @EnvironmentObject var store: BrowserStore
+    @State private var confirmClear = false
+
+    var body: some View {
+        List {
+            Section {
+                Toggle("Publicités", isOn: $store.settings.blockAds)
+                Toggle("Traqueurs", isOn: $store.settings.blockTrackers)
+                Toggle("Bandeaux de cookies", isOn: $store.settings.blockCookieBanners)
+                NavigationLink {
+                    HostListView(keyPath: \.blockerDisabledHosts, title: L("Bloqueur désactivé"), footer: L("Sur ces sites, rien n'est bloqué. Vous pouvez aussi utiliser « Désactiver le bloqueur » dans le menu."))
+                } label: { LabeledContent("Sites sans bloqueur", value: "\(store.settings.blockerDisabledHosts.count)") }
+            } header: { Text("Bloquer") }
+            Section {
+                Toggle("JavaScript", isOn: $store.settings.javascriptEnabled)
+                NavigationLink {
+                    HostListView(keyPath: \.javascriptDisabledHosts, title: L("Sans JavaScript"), footer: L("JavaScript est désactivé sur ces sites uniquement."))
+                } label: { LabeledContent("Sites sans JavaScript", value: "\(store.settings.javascriptDisabledHosts.count)") }
+                Toggle("Passer en HTTPS automatiquement", isOn: $store.settings.upgradeToHTTPS)
+            } header: { Text("Sites") }
+            Section {
+                Toggle("Effacer en fermant tous les onglets", isOn: $store.settings.clearDataOnCloseAll)
+                Button("Effacer l'historique et les données de sites", role: .destructive) { confirmClear = true }
+            } header: { Text("Données") } footer: { Text("Qafila ne collecte rien et ne contacte aucun service tiers en dehors des sites visités et du moteur de recherche choisi.") }
+        }
+        .confirmationDialog("Effacer l'historique, les cookies et les caches ?", isPresented: $confirmClear, titleVisibility: .visible) {
+            Button("Tout effacer", role: .destructive) { store.clearHistory(); store.clearWebsiteData(); store.flash(L("Données effacées")) }
+        }
+        .navigationTitle("Confidentialité")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+// MARK: - Lecture
+
+struct ReadingSettings: View {
+    @EnvironmentObject var store: BrowserStore
+
+    var body: some View {
+        List {
+            Section {
+                Toggle("Assombrir tous les sites", isOn: $store.settings.darkenSites)
+                Toggle("Seulement en mode sombre", isOn: $store.settings.darkenOnlyInDarkMode).disabled(!store.settings.darkenSites)
+                NavigationLink {
+                    HostListView(keyPath: \.darkenHosts, title: L("Exceptions"), footer: L("Ces sites font l'inverse du réglage général (assombris s'il est coupé, normaux s'il est actif)."))
+                } label: { LabeledContent("Exceptions", value: "\(store.settings.darkenHosts.count)") }
+            } header: { Text("Assombrir") }
+            Section {
+                HStack(spacing: 12) {
+                    Image(systemName: "textformat.size.smaller").foregroundStyle(.secondary)
+                    Slider(value: $store.settings.textZoom, in: 0.8...1.5, step: 0.05)
+                    Image(systemName: "textformat.size.larger").foregroundStyle(.secondary)
+                }
+                LabeledContent("Taille", value: "\(Int((store.settings.textZoom * 100).rounded())) %")
+                if store.settings.textZoom != 1 { Button("Rétablir 100 %") { store.settings.textZoom = 1 } }
+            } header: { Text("Taille du texte") }
+            Section {
+                Picker("Traduire en", selection: $store.settings.translateLanguage) { ForEach(TranslateLanguage.allCases) { Text($0.label).tag($0) } }
+                Toggle("Version bureau par défaut", isOn: $store.settings.desktopByDefault)
+                NavigationLink {
+                    HostListView(keyPath: \.desktopHosts, title: L("Exceptions bureau"), footer: L("Ces sites font l'inverse du réglage « Version bureau par défaut »."))
+                } label: { LabeledContent("Exceptions", value: "\(store.settings.desktopHosts.count)") }
+                TextField("User agent personnalisé (vide = défaut)", text: $store.settings.customUserAgent)
+                    .textInputAutocapitalization(.never).autocorrectionDisabled().font(.system(size: 14))
+            } header: { Text("Pages") }
+        }
+        .navigationTitle("Lecture")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+// MARK: - Énergie
+
+struct EnergySettings: View {
+    @EnvironmentObject var store: BrowserStore
+    var body: some View {
+        List {
+            Section {
+                Toggle("Suspendre les onglets en arrière-plan", isOn: $store.settings.suspendTabsInLowPower)
+            } footer: { Text("En mode économie d'énergie, les onglets que vous ne regardez pas libèrent leur page. Ils se rechargent quand vous y revenez.") }
+        }
+        .navigationTitle("Énergie")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+// MARK: - À propos
+
+struct AboutSettings: View {
+    @EnvironmentObject var store: BrowserStore
+    var body: some View {
+        List {
+            Section {
+                VStack(spacing: 4) {
+                    Image(store.settings.appIcon.preview).resizable().frame(width: 72, height: 72).clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    Text("Qafila").font(.system(size: 28, weight: .medium, design: .serif)).padding(.top, 8)
+                    Text("« caravane » en arabe").font(.system(size: 13)).foregroundStyle(.tertiary)
+                    if store.support.isSupporter {
+                        Text("Merci pour votre soutien ♥").font(.system(size: 13, weight: .medium)).foregroundStyle(.secondary).padding(.top, 6)
+                    }
+                }
+                .frame(maxWidth: .infinity).padding(.vertical, 12)
+                .listRowBackground(Color.clear)
+            }
+            Section {
+                LabeledContent("Version", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")
+                LabeledContent("Moteur", value: "WebKit")
+                LabeledContent("Données collectées", value: L("Aucune"))
+                Link(L("Assistance"), destination: URL(string: "https://fefe-kurylen.github.io/Qafila/")!)
+            }
+        }
+        .navigationTitle("À propos")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+// MARK: - Soutenir Qafila
+
+/// Soutien à Qafila, tout Qafila reste gratuit.
+/// Canal `store` : abonnement (0,99 €/mois) qui offre l'icône exclusive « Or ».
+/// Canal `stripe` : contribution libre sur la page de paiement Stripe, ouverte dans Safari (Apple Pay) ; rien n'est débloqué.
+struct SupportSettings: View {
+    @EnvironmentObject var store: BrowserStore
+    @Environment(\.openURL) private var openURL
+    @State private var manage = false
+    private var support: SupportStore { store.support }
+    private let pink = Color(red: 0.93, green: 0.30, blue: 0.45)
+
+    var body: some View {
+        List {
+            if support.usesStripe { stripeContent } else { storeContent }
+        }
+        .navigationTitle("Soutenir")
+        .navigationBarTitleDisplayMode(.inline)
+        .manageSubscriptionsSheet(isPresented: $manage)
+        .alert(support.message ?? "", isPresented: Binding(get: { support.message != nil }, set: { if !$0 { support.message = nil } })) {
+            Button("OK", role: .cancel) {}
+        }
+        .task { await support.load() }
+    }
+
+    /// Mode Stripe : simple remerciement + bouton vers la page Stripe dans le navigateur du système (jamais dans un onglet Qafila).
+    @ViewBuilder private var stripeContent: some View {
+        Section {
+            VStack(spacing: 10) {
+                Image(store.settings.appIcon.preview).resizable().frame(width: 92, height: 92)
+                    .clipShape(RoundedRectangle(cornerRadius: 21, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 21, style: .continuous).strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5))
+                Text(L("Soutenir Qafila")).font(.system(size: 24, weight: .semibold, design: .serif)).padding(.top, 6)
+                Text(L("Qafila est gratuit, sans publicité ni pistage. Si vous le souhaitez, vous pouvez soutenir son développement par une contribution libre."))
+                    .font(.system(size: 15)).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity).padding(.vertical, 8)
+            .listRowBackground(Color.clear)
+        }
+
+        Section {
+            Button {
+                guard let url = support.stripeURL else { return }
+                store.haptic(.medium)
+                openURL(url)
+            } label: {
+                VStack(spacing: 2) {
+                    Text(support.stripeURL == nil ? L("Bientôt disponible") : L("Soutenir Qafila")).font(.system(size: 17, weight: .semibold))
+                    if support.stripeURL != nil {
+                        Text(L("Apple Pay, carte bancaire")).font(.system(size: 13)).opacity(0.7)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .foregroundStyle(Color(.systemBackground))
+                .padding(.vertical, 12)
+                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.primary))
+                .opacity(support.stripeURL == nil ? 0.4 : 1)
+            }
+            .buttonStyle(.plain)
+            .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+            .listRowBackground(Color.clear)
+            .disabled(support.stripeURL == nil)
+        }
+
+        Section {
+            Label(L("Aucune publicité, aucun pistage, pour tout le monde"), systemImage: "hand.raised")
+            Label(L("Contribution libre et volontaire, sans engagement"), systemImage: "heart")
+        } header: { Text(L("Ce que vous soutenez")) } footer: {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(L("Le paiement s'effectue sur la page sécurisée de Stripe. Qafila ne voit jamais vos informations de paiement."))
+                Link(L("Confidentialité"), destination: URL(string: "https://fefe-kurylen.github.io/Qafila/confidentialite.html")!)
+            }
+        }
+    }
+
+    /// Mode App Store : abonnement StoreKit (inchangé).
+    @ViewBuilder private var storeContent: some View {
+            Section {
+                VStack(spacing: 10) {
+                    Image("PreviewIcon-Gold").resizable().frame(width: 92, height: 92)
+                        .clipShape(RoundedRectangle(cornerRadius: 21, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 21, style: .continuous).strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5))
+                    Text("Soutenir Qafila").font(.system(size: 24, weight: .semibold, design: .serif)).padding(.top, 6)
+                    Text(L("Qafila est gratuit, sans publicité ni pistage. Pour %@ par mois, vous aidez à le garder ainsi — et débloquez l'icône exclusive « Or ».", support.price))
+                        .font(.system(size: 15)).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity).padding(.vertical, 8)
+                .listRowBackground(Color.clear)
+            }
+
+            Section {
+                if support.isSupporter {
+                    Label { Text("Vous soutenez Qafila. Merci ♥") } icon: { Image(systemName: "heart.fill").foregroundStyle(pink) }
+                    Button { store.settings.appIcon = .gold; store.haptic(.medium) } label: {
+                        Label(store.settings.appIcon == .gold ? L("Icône Or utilisée") : L("Utiliser l'icône Or"), systemImage: "app.badge.checkmark")
+                    }
+                    .disabled(store.settings.appIcon == .gold)
+                    Button { manage = true } label: { Label("Gérer l'abonnement", systemImage: "creditcard") }
+                } else {
+                    Button { Task { await support.purchase(); if support.isSupporter { store.settings.appIcon = .gold } } } label: {
+                        HStack {
+                            Spacer()
+                            if support.busy { ProgressView().tint(Color(.systemBackground)) } else {
+                                Text(L("S'abonner — %@/mois", support.price)).font(.system(size: 17, weight: .semibold))
+                            }
+                            Spacer()
+                        }
+                        .foregroundStyle(Color(.systemBackground))
+                        .padding(.vertical, 14)
+                        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.primary))
+                    }
+                    .buttonStyle(.plain)
+                    .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+                    .listRowBackground(Color.clear)
+                    .disabled(support.busy)
+                }
+            }
+
+            Section {
+                Label("Icône exclusive « Or »", systemImage: "sparkles")
+                Label("Aucune publicité, aucun pistage, pour tout le monde", systemImage: "hand.raised")
+                Label("Résiliable à tout moment", systemImage: "arrow.uturn.backward")
+            } header: { Text("Ce que vous soutenez") }
+
+            Section {
+                Button("Restaurer mes achats") { Task { await support.restore() } }.disabled(support.busy)
+            } footer: {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(L("Abonnement mensuel de %@, renouvelé automatiquement sauf résiliation au moins 24 h avant la fin de la période. Le paiement est débité sur votre compte Apple. Gérez ou résiliez l'abonnement dans les réglages de votre compte Apple.", support.price))
+                    HStack(spacing: 14) {
+                        Link("Conditions d'utilisation", destination: URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!)
+                        Link("Confidentialité", destination: URL(string: "https://fefe-kurylen.github.io/Qafila/confidentialite.html")!)
+                    }
+                }
+            }
+    }
+}

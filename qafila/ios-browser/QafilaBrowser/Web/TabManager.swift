@@ -1,0 +1,359 @@
+import SwiftUI
+@preconcurrency import WebKit
+import Combine
+
+/// Conserve une WKWebView par onglet (l'état de navigation survit aux changements d'onglet), applique les règles de blocage,
+/// le mode sombre, le user agent, et remonte titre / URL / progression au store.
+@MainActor
+final class TabManager: NSObject, ObservableObject {
+    weak var store: BrowserStore?
+    @Published var progress: [UUID: Double] = [:]
+    @Published var loading: Set<UUID> = []
+    @Published var navState: [UUID: (back: Bool, forward: Bool)] = [:]
+    @Published var readerActive: Set<UUID> = []
+
+    private var views: [UUID: WKWebView] = [:]
+    private var observers: [UUID: [NSKeyValueObservation]] = [:]
+    private var adsRules: WKContentRuleList?
+    private var trackerRules: WKContentRuleList?
+    private var cookieRules: WKContentRuleList?
+    private let processPool = WKProcessPool()
+    /// Données des onglets privés (cookies, cache) : créées avec le premier onglet privé, détruites avec le dernier.
+    private var privateDataStore: WKWebsiteDataStore?
+    /// Nombre maximal de pages gardées en mémoire ; au-delà, les moins récemment visitées sont libérées (rechargées à l'ouverture).
+    static let maxLiveViews = 6
+    // Icônes de site : une requête par hôte au plus (Data vide = aucune icône trouvée), trois téléchargements à la fois.
+    private var faviconCache: [String: Data] = [:]
+    private var faviconQueue: [(host: String, icon: String)] = []
+    private var faviconWaiting: [String: [UUID]] = [:]
+    private var faviconActive = 0
+
+    override init() {
+        super.init()
+        ContentBlocker.compile { [weak self] ads, trackers, cookies in
+            Task { @MainActor in self?.adsRules = ads; self?.trackerRules = trackers; self?.cookieRules = cookies; self?.applyRules() }
+        }
+    }
+
+    // MARK: Création
+    func webView(for id: UUID) -> WKWebView {
+        if let v = views[id] { return v }
+        guard let tab = store?.tabs.first(where: { $0.id == id }) else { return WKWebView() }
+        let config = WKWebViewConfiguration()
+        config.processPool = processPool
+        config.websiteDataStore = tab.isPrivate ? privateStore() : .default()
+        config.allowsInlineMediaPlayback = true
+        config.defaultWebpagePreferences.preferredContentMode = .mobile
+        // Même signature que Safari : les sites (dont la connexion Google) traitent Qafila comme un vrai navigateur.
+        config.applicationNameForUserAgent = "Version/18.0 Mobile/15E148 Safari/604.1"
+        let controller = WKUserContentController()
+        controller.add(LeakAvoider(self), name: "qafila")
+        controller.addUserScript(WKUserScript(source: Scripts.pageInfo, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
+        config.userContentController = controller
+
+        let web = WKWebView(frame: .zero, configuration: config)
+        web.navigationDelegate = self
+        web.uiDelegate = self
+        web.allowsBackForwardNavigationGestures = store?.settings.edgeSwipeNavigation ?? true
+        web.allowsLinkPreview = true
+        web.scrollView.contentInsetAdjustmentBehavior = .never
+        web.isFindInteractionEnabled = true
+        web.backgroundColor = .systemBackground
+        web.isOpaque = false
+        web.pageZoom = CGFloat(store?.settings.textZoom ?? 1)
+        views[id] = web
+        observe(web, id: id)
+        applyRules(to: web)
+        applyUserAgent(id)
+        if let url = tab.url { web.load(URLRequest(url: url)) } else { loadStartPage(web) }
+        // Hors du cycle de rendu de SwiftUI (cette méthode est appelée depuis le conteneur de la page).
+        Task { @MainActor [weak self] in self?.evictIfNeeded(keeping: id) }
+        return web
+    }
+
+    private func privateStore() -> WKWebsiteDataStore {
+        if let s = privateDataStore { return s }
+        let s = WKWebsiteDataStore.nonPersistent()
+        privateDataStore = s
+        return s
+    }
+
+    /// Plus aucun onglet privé : les données de navigation privée disparaissent avec la dernière page.
+    func dropPrivateData() { privateDataStore = nil }
+
+    /// Garde au plus `maxLiveViews` pages vivantes : les moins récemment visitées sont libérées, jamais l'onglet sélectionné.
+    private func evictIfNeeded(keeping id: UUID) {
+        guard let store, views.count > Self.maxLiveViews else { return }
+        let protected = Set([id, store.selectedTabID].compactMap { $0 })
+        func visited(_ id: UUID) -> Date { store.tabs.first { $0.id == id }?.lastVisited ?? .distantPast }
+        let victims = views.keys.filter { !protected.contains($0) }.sorted { visited($0) < visited($1) }
+        for v in victims.prefix(views.count - Self.maxLiveViews) { discard(v) }
+    }
+
+    func discard(_ id: UUID) {
+        observers[id]?.forEach { $0.invalidate() }
+        observers[id] = nil
+        views[id]?.removeFromSuperview()
+        views[id] = nil
+        progress[id] = nil; loading.remove(id); navState[id] = nil; readerActive.remove(id)
+    }
+
+    private func observe(_ web: WKWebView, id: UUID) {
+        observers[id] = [
+            web.observe(\.estimatedProgress) { [weak self] w, _ in Task { @MainActor in self?.progress[id] = w.estimatedProgress } },
+            web.observe(\.isLoading) { [weak self] w, _ in Task { @MainActor in if w.isLoading { self?.loading.insert(id) } else { self?.loading.remove(id) } } },
+            web.observe(\.title) { [weak self] w, _ in Task { @MainActor in self?.store?.update(id) { $0.title = w.title ?? "" } } },
+            web.observe(\.url) { [weak self] w, _ in Task { @MainActor in
+                guard let u = w.url, u.scheme != "about" else { return }
+                self?.store?.update(id) { $0.url = u; $0.lastVisited = Date() }
+                self?.readerActive.remove(id)
+            } },
+            web.observe(\.canGoBack) { [weak self] w, _ in Task { @MainActor in self?.navState[id] = (w.canGoBack, w.canGoForward) } },
+            web.observe(\.canGoForward) { [weak self] w, _ in Task { @MainActor in self?.navState[id] = (w.canGoBack, w.canGoForward) } },
+            // La zone sous la barre d'état (marge haute) prend la couleur de fond de la page : aucun aplat clair ou noir.
+            web.observe(\.underPageBackgroundColor) { w, _ in Task { @MainActor in
+                let c = w.underPageBackgroundColor ?? .systemBackground
+                w.backgroundColor = c; w.scrollView.backgroundColor = c
+            } },
+            web.observe(\.themeColor) { [weak self] w, _ in Task { @MainActor in
+                guard let store = self?.store, store.selectedTabID == id else { return }
+                store.siteThemeColor = w.themeColor.map { Color(uiColor: $0) }
+            } },
+        ]
+    }
+
+    // MARK: Navigation
+    func load(_ url: URL?, in id: UUID) {
+        let web = webView(for: id)
+        readerActive.remove(id)
+        if let url, url.scheme != "about" { web.load(URLRequest(url: url)); return }
+        // Accueil ou page vide : l'onglet repart de zéro (adresse, titre, icône et temps de lecture de l'ancien site).
+        store?.update(id) { $0.url = url; $0.title = ""; $0.faviconData = nil; $0.themeColorHex = nil; $0.readingMinutes = 0 }
+        if store?.selectedTabID == id { store?.siteThemeColor = nil }
+        if let url { web.load(URLRequest(url: url)) } else { loadStartPage(web) }
+    }
+
+    private func loadStartPage(_ web: WKWebView) {
+        let marks = (store?.bookmarks ?? []).prefix(12).map { (title: $0.title, url: $0.url.absoluteString) }
+        web.loadHTMLString(StartPage.html(dark: store?.isDarkScheme ?? false, bookmarks: Array(marks)), baseURL: nil)
+    }
+
+    /// Réglages qui s'appliquent à toutes les pages ouvertes : zoom du texte, gestes de bord d'écran.
+    func applySettings() {
+        guard let s = store?.settings else { return }
+        for web in views.values {
+            let zoom = CGFloat(s.textZoom)
+            if web.pageZoom != zoom { web.pageZoom = zoom }
+            web.allowsBackForwardNavigationGestures = s.edgeSwipeNavigation
+        }
+    }
+
+    func refreshDarken() {
+        guard let store else { return }
+        for (id, _) in views { if let tab = store.tabs.first(where: { $0.id == id }) { applyDarken(id, enabled: store.isDarkened(tab)) } }
+    }
+
+    /// Mode économie d'énergie : les onglets en arrière-plan libèrent leur page (rechargée à l'ouverture).
+    func suspendBackgroundIfNeeded(keeping id: UUID) {
+        guard store?.settings.suspendTabsInLowPower == true, ProcessInfo.processInfo.isLowPowerModeEnabled else { return }
+        for other in views.keys where other != id { discard(other) }
+    }
+
+    func findInPage(_ id: UUID) {
+        webView(for: id).findInteraction?.presentFindNavigator(showingReplace: false)
+    }
+
+    func toggleReader(_ id: UUID) {
+        let web = webView(for: id)
+        if readerActive.contains(id) { web.goBack(); readerActive.remove(id); return }
+        web.evaluateJavaScript(Scripts.reader) { [weak self] result, _ in
+            guard let json = result as? String, let data = json.data(using: .utf8),
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: String] else { return }
+            let dark = UITraitCollection.current.userInterfaceStyle == .dark
+            let html = Scripts.readerPage(title: obj["title"] ?? "", byline: obj["byline"] ?? "", html: obj["html"] ?? "", host: obj["host"] ?? "", dark: dark)
+            web.loadHTMLString(html, baseURL: URL(string: obj["url"] ?? ""))
+            Task { @MainActor in self?.readerActive.insert(id) }
+        }
+    }
+
+    // MARK: Règles, mode sombre, user agent
+    func applyRules() { views.values.forEach { applyRules(to: $0) } }
+    /// Listes séparées (pubs, traqueurs, bandeaux de cookies) ; un site en exception n'a aucune règle.
+    private func applyRules(to web: WKWebView, url: URL? = nil) {
+        let c = web.configuration.userContentController
+        c.removeAllContentRuleLists()
+        guard let store, store.isBlockerActive(for: url ?? web.url) else { return }
+        if store.settings.blockAds, let l = adsRules { c.add(l) }
+        if store.settings.blockTrackers, let l = trackerRules { c.add(l) }
+        if store.settings.blockCookieBanners, let l = cookieRules { c.add(l) }
+    }
+
+    func applyDarken(_ id: UUID, enabled: Bool) {
+        webView(for: id).evaluateJavaScript(Scripts.darken(enabled))
+    }
+
+    /// User agent de la page ; le mode de contenu (mobile / bureau) se décide à chaque navigation dans `decidePolicyFor`,
+    /// car la configuration d'une WKWebView existante n'est qu'une copie.
+    func applyUserAgent(_ id: UUID) {
+        guard let store, let tab = store.tabs.first(where: { $0.id == id }) else { return }
+        let web = webView(for: id)
+        if !store.settings.customUserAgent.isEmpty { web.customUserAgent = store.settings.customUserAgent; return }
+        web.customUserAgent = store.isDesktop(tab) ? "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15" : nil
+    }
+
+    /// Icônes des onglets restaurés mais pas encore ouverts (pour la liste des onglets) ; celles déjà connues alimentent le cache par hôte.
+    func prefetchFavicons() {
+        guard let store else { return }
+        for t in store.tabs { if let h = t.url?.host, let d = t.faviconData, faviconCache[h] == nil { faviconCache[h] = d } }
+        for t in store.tabs where t.faviconData == nil && !t.isPrivate { if let h = t.url?.host { fetchFavicon("", host: h, id: t.id) } }
+    }
+
+    func applyUserAgentToOpenTabs() { for id in views.keys { applyUserAgent(id) } }
+
+    /// Vignette d'une page vivante, à la largeur demandée (en points) plutôt qu'à la résolution de l'écran.
+    func snapshot(_ id: UUID, width: CGFloat? = nil, completion: @escaping (UIImage?) -> Void) {
+        guard let web = views[id] else { completion(nil); return }
+        let config = WKSnapshotConfiguration()
+        config.afterScreenUpdates = false
+        if let width { config.snapshotWidth = NSNumber(value: Double(width)) }
+        web.takeSnapshot(with: config) { img, _ in completion(img) }
+    }
+
+    private func tabID(for web: WKWebView) -> UUID? { views.first { $0.value === web }?.key }
+}
+
+// MARK: - Délégués WebKit
+extension TabManager: WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
+    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, preferences: WKWebpagePreferences, decisionHandler: @escaping (WKNavigationActionPolicy, WKWebpagePreferences) -> Void) {
+        let url = navigationAction.request.url
+        preferences.allowsContentJavaScript = store?.isJavaScriptEnabled(for: url) ?? true
+        if let store, let id = tabID(for: webView), let tab = store.tabs.first(where: { $0.id == id }) {
+            preferences.preferredContentMode = store.isDesktop(tab) ? .desktop : .mobile
+        }
+        if navigationAction.targetFrame?.isMainFrame == true { applyRules(to: webView, url: url) }
+        // Passage automatique en HTTPS
+        if let store, store.settings.upgradeToHTTPS, let u = url, u.scheme == "http", navigationAction.targetFrame?.isMainFrame == true,
+           var comps = URLComponents(url: u, resolvingAgainstBaseURL: false) {
+            comps.scheme = "https"
+            if let https = comps.url { webView.load(URLRequest(url: https)); decisionHandler(.cancel, preferences); return }
+        }
+        // Liens externes (tel:, mailto:, stores)
+        if let u = url, let scheme = u.scheme, !["http", "https", "about", "file", "data", "blob"].contains(scheme) {
+            UIApplication.shared.open(u); decisionHandler(.cancel, preferences); return
+        }
+        decisionHandler(.allow, preferences)
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        guard let id = tabID(for: webView), let store else { return }
+        if let tab = store.tabs.first(where: { $0.id == id }) {
+            store.recordVisit(tab)
+            if store.isDarkened(tab) { applyDarken(id, enabled: true) }
+        }
+    }
+
+    /// Processus web tué par le système : la page visible est rechargée, une page d'arrière-plan est libérée (rechargée à l'ouverture).
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        guard let id = tabID(for: webView) else { return }
+        readerActive.remove(id)
+        guard store?.selectedTabID == id else { discard(id); return }
+        if webView.url?.scheme?.hasPrefix("http") == true { webView.reload() } else { load(store?.tabs.first { $0.id == id }?.url, in: id) }
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { showError(webView, error) }
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { showError(webView, error) }
+    private func showError(_ web: WKWebView, _ error: Error) {
+        let e = error as NSError
+        guard e.code != NSURLErrorCancelled, e.code != 102 else { return }
+        web.loadHTMLString(StartPage.error(message: e.localizedDescription, url: e.userInfo[NSURLErrorFailingURLStringErrorKey] as? String ?? ""), baseURL: nil)
+    }
+
+    func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
+        // target=_blank : on ouvre un nouvel onglet dans Qafila.
+        if let u = navigationAction.request.url { store?.newTab(url: u, isPrivate: store?.selectedTab?.isPrivate ?? false) }
+        return nil
+    }
+
+    func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
+        let a = UIAlertController(title: webView.url?.host, message: message, preferredStyle: .alert)
+        a.addAction(UIAlertAction(title: "OK", style: .default) { _ in completionHandler() })
+        UIApplication.shared.topViewController?.present(a, animated: true)
+    }
+
+    func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (Bool) -> Void) {
+        let a = UIAlertController(title: webView.url?.host, message: message, preferredStyle: .alert)
+        a.addAction(UIAlertAction(title: L("Annuler"), style: .cancel) { _ in completionHandler(false) })
+        a.addAction(UIAlertAction(title: "OK", style: .default) { _ in completionHandler(true) })
+        UIApplication.shared.topViewController?.present(a, animated: true)
+    }
+
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard let body = message.body as? [String: Any], body["type"] as? String == "pageInfo",
+              let web = message.webView, let id = tabID(for: web) else { return }
+        let minutes = body["minutes"] as? Int ?? 0
+        let color = body["color"] as? String ?? ""
+        let icon = body["icon"] as? String ?? ""
+        store?.update(id) { $0.readingMinutes = minutes; if !color.isEmpty { $0.themeColorHex = color } }
+        if let store, store.selectedTabID == id, !color.isEmpty { store.siteThemeColor = Color(hex: color) }
+        fetchFavicon(icon, host: web.url?.host, id: id)
+    }
+
+    func fetchFavicon(_ icon: String, host: String?, id: UUID) {
+        guard let host else { return }
+        if let data = faviconCache[host] { setFavicon(data, for: id); return }
+        if faviconWaiting[host] == nil { faviconQueue.append((host: host, icon: icon)) }
+        faviconWaiting[host, default: []].append(id)
+        startNextFavicon()
+    }
+
+    private func setFavicon(_ data: Data, for id: UUID) {
+        guard !data.isEmpty else { return }
+        store?.update(id) { if $0.faviconData != data { $0.faviconData = data } }
+    }
+
+    private func startNextFavicon() {
+        guard faviconActive < 3, !faviconQueue.isEmpty else { return }
+        let (host, icon) = faviconQueue.removeFirst()
+        faviconActive += 1
+        let candidates = [icon, "https://\(host)/apple-touch-icon.png", "https://\(host)/favicon.ico"].filter { !$0.isEmpty }
+        Task.detached {
+            let found = await Self.downloadFavicon(candidates)
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                self.faviconCache[host] = found
+                for id in self.faviconWaiting.removeValue(forKey: host) ?? [] { self.setFavicon(found, for: id) }
+                self.faviconActive -= 1
+                self.startNextFavicon()
+            }
+        }
+    }
+
+    /// Première image valide parmi les adresses candidates (Data vide si aucune).
+    nonisolated private static func downloadFavicon(_ candidates: [String]) async -> Data {
+        for c in candidates {
+            guard let u = URL(string: c), let result = try? await URLSession.shared.data(from: u),
+                  (result.1 as? HTTPURLResponse)?.statusCode == 200, result.0.count < 400_000, UIImage(data: result.0) != nil else { continue }
+            return result.0
+        }
+        return Data()
+    }
+}
+
+/// Évite le cycle de rétention WKUserContentController → handler.
+@MainActor
+final class LeakAvoider: NSObject, WKScriptMessageHandler {
+    weak var delegate: WKScriptMessageHandler?
+    init(_ delegate: WKScriptMessageHandler) { self.delegate = delegate }
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        delegate?.userContentController(userContentController, didReceive: message)
+    }
+}
+
+extension Color {
+    init?(hex: String) {
+        var s = hex.trimmingCharacters(in: .whitespaces)
+        if s.hasPrefix("#") { s.removeFirst() }
+        guard s.count == 6 || s.count == 3, let v = UInt64(s.count == 3 ? s.map { "\($0)\($0)" }.joined() : s, radix: 16) else { return nil }
+        self.init(red: Double((v >> 16) & 0xff) / 255, green: Double((v >> 8) & 0xff) / 255, blue: Double(v & 0xff) / 255)
+    }
+}

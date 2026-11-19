@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src data: crx:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'">
+  <title>Qafila</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Voile (10 %) derrière le menu, la saisie d'adresse et la feuille des réglages -->
+  <div id="dim" hidden></div>
+  <!-- Écran des onglets (fenêtre entière) -->
+  <section id="tabs" class="tabs-screen" hidden></section>
+  <!-- Fond de la bande quand la page est posée à côté d'elle (Fixe) : couleur du thème, ou du site en barre « Auto » -->
+  <div id="strip-bg" class="strip-bg"></div>
+  <!-- Au défilement « Réduire » : mini-adresse (domaine seul) à la place de la barre ; un clic la rouvre -->
+  <button id="mini" class="mini" type="button" hidden></button>
+  <!-- Plein écran demandé par une page : avis bref « site en plein écran · Échap pour quitter » -->
+  <div id="fsn" class="fsn" role="status" hidden></div>
+  <!-- Barre : faux verre (capture floutée de la page) + couleur de barre + liseré + rangée -->
+  <header id="bar" class="bar">
+    <div class="glass"><div id="glass-img" class="glass-img empty"></div></div>
+    <div class="tint"></div>
+    <div class="rim"></div>
+    <div id="bar-content" class="bar-content"></div>
+  </header>
+  <!-- Barre de favoris : discrète, sous la barre (au-dessus si la barre est en bas) -->
+  <nav id="bmbar" class="bmbar" hidden></nav>
+  <!-- Suggestions de la saisie d'adresse -->
+  <div id="suggest" class="suggest card-glass" hidden></div>
+  <!-- Menu flottant -->
+  <nav id="menu" class="menu card-glass" hidden></nav>
+  <nav id="bmmenu" class="menu bmmenu card-glass" hidden></nav>
+  <!-- Feuille : réglages, galerie, éditeur, favoris, historique -->
+  <section id="sheet" class="sheet" hidden></section>
+  <canvas id="composite" hidden></canvas>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

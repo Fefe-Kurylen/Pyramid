@@ -1,0 +1,951 @@
+'use strict';
+// Gestion des onglets : une WebContentsView par onglet (partition « persist:qafila », ou « qafila-private » partagée
+// par tous les onglets privés et vidée avec le dernier), navigation, comportements web portés du mobile (HTTPS forcé
+// avec repli, schémas externes, fenêtres surgissantes → onglets, lecteur, assombrissement, user agent, zoom, bloqueur).
+const { WebContentsView, session, shell, clipboard, Menu, dialog } = require('electron');
+const { SitePermissions } = require('./permissions');
+const path = require('node:path');
+const { EventEmitter } = require('node:events');
+const scripts = require('./scripts');
+const search = require('./search');
+const { safeFaviconURL } = require('./favicon');
+
+const PAGE_PRELOAD = path.join(__dirname, '..', 'preload', 'page.js');
+
+/** Copie un texte (Electron 44+ : clipboard.writeText renvoie une promesse ; un échec est ignoré). */
+function copyText(text) { return clipboard.writeText(String(text)).then(() => true, () => false); }
+
+const HEX_COLOR = /^#[0-9a-f]{6}$/i;
+// file: n'en fait pas partie : une page locale aurait accès aux autres fichiers de l'ordinateur (le chrome, chargé en
+// file://, a besoin du fusible grantFileProtocolExtraPrivileges). Les fichiers ne s'ouvrent jamais dans un onglet.
+const INTERNAL_SCHEMES = new Set(['http:', 'https:', 'about:', 'data:', 'blob:', 'chrome:', 'devtools:', 'chrome-error:', 'chrome-extension:']);
+const isFileURL = (url) => /^\s*file:/i.test(String(url || ''));
+// Applications externes : courriel et téléphone seulement, après un geste récent de l'utilisateur et sa confirmation.
+const EXTERNAL_SCHEMES = new Set(['mailto:', 'tel:']);
+const GESTURE_WINDOW_MS = 3000;
+const GESTURE_EVENTS = new Set(['mouseDown', 'keyDown', 'rawKeyDown', 'gestureTap', 'touchStart']);
+// Monde isolé de l'extracteur du lecteur (999 est celui des préchargements d'Electron).
+const READER_WORLD = 1001;
+const MAX_LIVE_VIEWS = 8;
+// Plantage du moteur de rendu : au plus un rechargement automatique par onglet et par minute, puis page d'erreur.
+const CRASH_RELOAD_MS = 60_000;
+// Autorisations des sites : main/permissions.js (question à l'utilisateur, réponse mémorisée par site).
+// User agent mobile : même version majeure de Chrome que le moteur (sinon l'écart UA / moteur distingue l'utilisateur).
+const CHROME_MAJOR = String(process.versions.chrome || '140').split('.')[0];
+const MOBILE_UA = `Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROME_MAJOR}.0.0.0 Mobile Safari/537.36`;
+// JavaScript désactivé (réglage global ou par site) : appliqué à chaque document par cet en-tête, quelle que soit la
+// vue (redirection vers un site désactivé, réglage changé après l'ouverture de l'onglet).
+const NO_SCRIPT_CSP = "script-src 'none'";
+const ERR_ABORTED = -3;
+
+/** User agent « Chrome ordinaire » : sans Electron/… ni Qafila/… (la connexion Google exige un navigateur connu). */
+function desktopUserAgent(fallback) {
+  return String(fallback || '').replace(/\sElectron\/\S+/g, '').replace(/\sQafila\/\S+/gi, '').replace(/\squafila-desktop\/\S+/gi, '');
+}
+
+// Identité « Google Chrome » complète. Google refuse la connexion aux navigateurs qu'il reconnaît comme intégrés
+// (« Ce navigateur ou cette application ne sont peut-être pas sécurisés ») quand leur identité n'est pas cohérente :
+// user agent complet d'Electron, indices client (Sec-CH-UA, navigator.userAgentData) sans la marque « Google Chrome »,
+// objet window.chrome absent (preload/page.js). Chaque onglet reçoit donc, par le protocole des outils de
+// développement, la même identité qu'un Chrome de la même version : user agent réduit et indices client complets.
+const CHROME_FULL = String(process.versions.chrome || `${CHROME_MAJOR}.0.0.0`);
+const CHROME_PLATFORM = { win32: 'Windows NT 10.0; Win64; x64', darwin: 'Macintosh; Intel Mac OS X 10_15_7' }[process.platform] || 'X11; Linux x86_64';
+const CHROME_UA = `Mozilla/5.0 (${CHROME_PLATFORM}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROME_MAJOR}.0.0.0 Safari/537.36`;
+function chromeMetadata() {
+  const brands = (v) => [{ brand: 'Google Chrome', version: v }, { brand: 'Chromium', version: v }, { brand: 'Not/A)Brand', version: v === CHROME_MAJOR ? '24' : '24.0.0.0' }];
+  return {
+    brands: brands(CHROME_MAJOR), fullVersionList: brands(CHROME_FULL), fullVersion: CHROME_FULL,
+    platform: { win32: 'Windows', darwin: 'macOS' }[process.platform] || 'Linux',
+    platformVersion: process.platform === 'win32' ? '19.0.0' : process.platform === 'darwin' ? '15.0.0' : '6.0.0',
+    architecture: process.arch === 'arm64' ? 'arm' : 'x86', model: '', mobile: false, bitness: '64', wow64: false,
+  };
+}
+const GOOGLE_LOGIN_HOSTS = new Set(['accounts.google.com', 'accounts.youtube.com']);
+const isGoogleLogin = (url) => GOOGLE_LOGIN_HOSTS.has(hostOf(url));
+
+// Indices client envoyés par en-têtes (Sec-CH-UA…). Electron ne les envoie jamais, même quand navigator.userAgentData
+// annonce « Google Chrome » : Google voit l'incohérence et refuse la connexion. Comme Chrome : indices de base sur
+// toute requête https, indices détaillés quand le site les a demandés (Accept-CH / Critical-CH, mémorisés par origine)
+// et toujours pour les domaines de Google (un Chrome qui les connaît déjà).
+const CH_LOW = ['sec-ch-ua', 'sec-ch-ua-mobile', 'sec-ch-ua-platform'];
+const CH_GOOGLE = /(^|\.)(google\.[a-z.]+|youtube\.com|gstatic\.com|googleapis\.com|googleusercontent\.com|withgoogle\.com)$/;
+const chBrands = (list) => list.map((b) => `"${b.brand}";v="${b.version}"`).join(', ');
+function clientHintHeaders(requested = new Set(), meta = chromeMetadata()) {
+  const all = {
+    'sec-ch-ua': chBrands(meta.brands),
+    'sec-ch-ua-mobile': meta.mobile ? '?1' : '?0',
+    'sec-ch-ua-platform': `"${meta.platform}"`,
+    'sec-ch-ua-full-version-list': chBrands(meta.fullVersionList),
+    'sec-ch-ua-full-version': `"${meta.fullVersion}"`,
+    'sec-ch-ua-platform-version': `"${meta.platformVersion}"`,
+    'sec-ch-ua-arch': `"${meta.architecture}"`,
+    'sec-ch-ua-bitness': `"${meta.bitness}"`,
+    'sec-ch-ua-model': `"${meta.model}"`,
+    'sec-ch-ua-wow64': meta.wow64 ? '?1' : '?0',
+    'sec-ch-ua-form-factors': '"Desktop"',
+  };
+  const out = {};
+  for (const k of CH_LOW) out[k] = all[k];
+  for (const k of requested) if (all[k]) out[k] = all[k];
+  return out;
+}
+/** Indices demandés par une réponse (en-têtes Accept-CH et Critical-CH), en minuscules. */
+function requestedHints(responseHeaders = {}) {
+  const set = new Set();
+  for (const [k, v] of Object.entries(responseHeaders)) {
+    const key = k.toLowerCase();
+    if (key !== 'accept-ch' && key !== 'critical-ch') continue;
+    for (const h of [].concat(v).join(',').split(',')) { const t = h.trim().toLowerCase(); if (t.startsWith('sec-ch-ua')) set.add(t); }
+  }
+  return set;
+}
+const ALL_HINTS = new Set(Object.keys(clientHintHeaders(new Set(['sec-ch-ua-full-version-list', 'sec-ch-ua-full-version', 'sec-ch-ua-platform-version', 'sec-ch-ua-arch', 'sec-ch-ua-bitness', 'sec-ch-ua-model', 'sec-ch-ua-wow64', 'sec-ch-ua-form-factors']))));
+
+function hostOf(url) { try { return new URL(url).hostname.toLowerCase(); } catch { return ''; } }
+function stripWWW(h) { return h.startsWith('www.') ? h.slice(4) : h; }
+
+class TabManager extends EventEmitter {
+  /**
+   * @param {object} o
+   * @param {Electron.BrowserWindow} o.win fenêtre
+   * @param {import('./store').Store} o.store état
+   * @param {import('./blocker').Blocker} o.blocker bloqueur
+   * @param {() => import('./i18n').translator} o.t traducteur courant
+   * @param {() => boolean} o.isDark thème sombre effectif
+   * @param {boolean} [o.offline] mode démo hors ligne : pages d'article locales
+   */
+  constructor({ win, store, blocker, t, isDark, offline = false, userAgent, electronUserAgent }) {
+    super();
+    this.win = win;
+    this.store = store;
+    this.blocker = blocker;
+    this.t = t;
+    this.isDark = isDark;
+    this.offline = offline;
+    this.views = new Map();      // tabId → WebContentsView
+    this.live = new Map();       // tabId → { loading, progress, canGoBack, canGoForward, blocked }
+    this.readerActive = new Set();
+    this.upgradedFrom = new Map(); // webContentsId → adresse http d'origine d'un passage forcé en https
+    this.httpOnlyHosts = new Set();        // sites restés en http (https impossible), onglets ordinaires
+    this.privateHttpOnlyHosts = new Set(); // idem pour la navigation privée, oublié avec la dernière page privée
+    this.lastGesture = new Map();  // webContentsId → instant du dernier clic / appui de touche dans la page
+    this.externalPrompt = new Set(); // webContentsId dont une demande d'application externe est ouverte
+    this.downloadState = new Map(); // webContentsId → { used, at } : téléchargements de l'onglet (geste / automatique)
+    this.trustedNav = new Map();   // webContentsId → la navigation en cours vient du navigateur ou d'un geste
+    this.navSeq = new Map();       // webContentsId → nombre de navigations principales commencées
+    this.popupGesture = new Map(); // webContentsId → instant du geste déjà consommé par une fenêtre surgissante
+    this.crashReloads = new Map(); // tabId → instant du dernier rechargement après un plantage
+    this.attached = null;        // onglet dont la vue est affichée
+    this.pageBounds = { x: 0, y: 0, width: 0, height: 0 };
+    this.userAgent = desktopUserAgent(userAgent);
+    /** Identité Electron d'origine, présentée telle quelle aux pages de connexion de Google (useElectronIdentity). */
+    this.electronUA = String(electronUserAgent || userAgent || '');
+    /** Identité appliquée à chaque page (setIdentity) : évite de la renvoyer à chaque navigation. */
+    this.identity = new Map();
+    /** Indices client demandés par chaque origine (Accept-CH), par session : la navigation privée n'en garde rien. */
+    this.hintPrefs = new WeakMap();
+    this.permissions = new SitePermissions({ store, win: () => this.win, t });
+    this.popups = new Set();       // fenêtres de connexion ouvertes par les sites (window.open avec dimensions)
+    this.persistent = session.fromPartition('persist:qafila');
+    this.private = null;
+    this.privateClearing = null;   // effacement de la session privée en cours (attendu avant toute nouvelle page privée)
+    this.prepare(this.persistent);
+  }
+
+  // ----- Sessions -----
+  prepare(ses) {
+    ses.setUserAgent(CHROME_UA, 'fr-FR,fr;q=0.9,en;q=0.8'); // requêtes hors page (service workers…) : même identité
+    ses.setSpellCheckerEnabled(false);
+    // Téléchargements : traités par le processus principal (dossier par défaut, notification dans la barre).
+    ses.on('will-download', (_e, item, wc) => this.emit('download', item, wc, ses === this.private));
+    // Autorisations (caméra, micro, position, notifications…) : question à l'utilisateur, réponse mémorisée par site
+    // (main/permissions.js) ; en privé, réponses gardées en mémoire seulement.
+    const isPrivate = ses !== this.persistent;
+    ses.setPermissionRequestHandler((wc, permission, cb, details) => { this.permissions.request(wc, permission, details, isPrivate).then(cb, () => cb(false)); });
+    ses.setPermissionCheckHandler((_wc, permission, origin, details) => this.permissions.check(permission, origin, details, isPrivate));
+    // Partage d'écran (visioconférences) : choix de l'écran ou de la fenêtre.
+    ses.setDisplayMediaRequestHandler((request, callback) => { this.permissions.displayMedia(request, callback, isPrivate); });
+    // Périphériques (USB, HID, série, Bluetooth) : jamais.
+    ses.setDevicePermissionHandler(() => false);
+    // Fichiers locaux : aucune requête file: ne sort des sessions des onglets (dernier rempart derrière les gardes de
+    // navigation). Le chrome, dans la session par défaut, n'est pas concerné.
+    try { ses.protocol.handle('file', () => new Response('', { status: 403, headers: { 'content-type': 'text/plain' } })); } catch { /* déjà intercepté */ }
+    // Un seul gestionnaire onBeforeRequest par session (un second appel remplacerait le premier) :
+    // 1) HTTPS forcé : les navigations principales en http partent en https ; en cas d'échec, retour en http (did-fail-load) ;
+    // 2) bloqueur : requêtes tierces vers les domaines publicitaires / traqueurs / bandeaux annulées.
+    ses.webRequest.onBeforeRequest({ urls: ['http://*/*', 'https://*/*', 'ws://*/*', 'wss://*/*'] }, (details, cb) => {
+      if (details.resourceType === 'mainFrame') {
+        const upgraded = this.upgrade(details, ses !== this.persistent);
+        return cb(upgraded ? { redirectURL: upgraded } : {});
+      }
+      cb(this.blocker.shouldBlock(details) ? { cancel: true } : {});
+    });
+    // Un seul gestionnaire onHeadersReceived par session : JavaScript désactivé = « script-src 'none' » ajouté au
+    // document (les politiques s'additionnent : le site ne peut pas l'assouplir). Cadre principal : réglage de son
+    // adresse ; sous-cadre : réglage de la page qui le contient (comme Chrome, réglage par site de premier niveau).
+    this.hintPrefs.set(ses, new Map());
+    // Un seul gestionnaire onBeforeSendHeaders par session : indices client d'un vrai Chrome (voir clientHintHeaders).
+    ses.webRequest.onBeforeSendHeaders({ urls: ['https://*/*', 'wss://*/*'] }, (details, cb) => {
+      const ident = this.identity.get(details.webContentsId);
+      // Pages de connexion de Google (et tout ce que charge une page en identité Electron) : identité Electron d'origine,
+      // sans indices client par en-têtes, exactement comme Electron les envoie (voir useElectronIdentity).
+      if (ident === 'electron' || ((ident === undefined || ident === 'chrome') && isGoogleLogin(details.url))) {
+        const headers = { ...details.requestHeaders };
+        for (const k of Object.keys(headers)) if (k.toLowerCase().startsWith('sec-ch-ua') || k.toLowerCase() === 'user-agent') delete headers[k];
+        headers['User-Agent'] = this.electronUA;
+        return cb({ requestHeaders: headers });
+      }
+      if (ident !== undefined && ident !== 'chrome') return cb({});
+      let origin = '';
+      try { origin = new URL(details.url).origin; } catch { return cb({}); }
+      const host = hostOf(details.url);
+      const asked = CH_GOOGLE.test(host) ? ALL_HINTS : (this.hintPrefs.get(ses)?.get(origin) || undefined);
+      const headers = { ...details.requestHeaders };
+      for (const k of Object.keys(headers)) if (k.toLowerCase().startsWith('sec-ch-ua')) delete headers[k];
+      cb({ requestHeaders: Object.assign(headers, clientHintHeaders(asked)) });
+    });
+    ses.webRequest.onHeadersReceived({ urls: ['http://*/*', 'https://*/*'] }, (details, cb) => {
+      const { resourceType } = details;
+      if ((resourceType === 'mainFrame' || resourceType === 'subFrame') && details.url.startsWith('https://')) {
+        const asked = requestedHints(details.responseHeaders);
+        if (asked.size) { try { this.hintPrefs.get(ses)?.set(new URL(details.url).origin, asked); } catch { /* adresse invalide */ } }
+      }
+      if (resourceType !== 'mainFrame' && resourceType !== 'subFrame') return cb({});
+      const top = resourceType === 'mainFrame' ? details.url : (this.pageURLFor(details.webContentsId) || details.url);
+      if (this.isJavaScriptEnabled(top)) return cb({});
+      const headers = { ...(details.responseHeaders || {}) };
+      const key = Object.keys(headers).find((k) => k.toLowerCase() === 'content-security-policy') || 'Content-Security-Policy';
+      headers[key] = [...[].concat(headers[key] || []), NO_SCRIPT_CSP];
+      cb({ responseHeaders: headers });
+    });
+  }
+
+  /** Sites restés en http : un ensemble par type de session (rien de la navigation privée ne reste après elle). */
+  httpOnlyFor(isPrivate) { return isPrivate ? this.privateHttpOnlyHosts : this.httpOnlyHosts; }
+
+  /** Adresse https à utiliser pour une navigation principale en http, ou null. */
+  upgrade(details, isPrivate = false) {
+    if (!details.url.startsWith('http://') || !this.store.settings.upgradeToHTTPS) return null;
+    const host = hostOf(details.url);
+    if (!host || this.httpOnlyFor(isPrivate).has(host) || host === 'localhost' || /^(\d{1,3}\.){3}\d{1,3}$/.test(host) || host.startsWith('[') || host.endsWith('.local')) return null;
+    this.upgradedFrom.set(details.webContentsId, details.url);
+    return 'https://' + details.url.slice('http://'.length);
+  }
+
+  /** Session d'un onglet (privée ou persistante). */
+  sessionFor(tab) { return tab?.isPrivate ? this.privateSession() : this.persistent; }
+
+  privateSession() {
+    if (!this.private) { this.private = session.fromPartition('qafila-private'); this.prepare(this.private); }
+    return this.private;
+  }
+
+  /**
+   * Plus aucun onglet privé : les données de navigation privée disparaissent avec la dernière page, connexions
+   * ouvertes (keep-alive, HTTP/2) et cache DNS compris. Une nouvelle page privée attend la fin de l'effacement (open).
+   */
+  dropPrivateData() {
+    if (!this.private) return null;
+    const s = this.private;
+    this.privateHttpOnlyHosts.clear();
+    if (this.private) this.hintPrefs.set(this.private, new Map());
+    this.closePopups({ privateOnly: true });
+    this.permissions.privateAnswers.clear();
+    this.emit('private-dropped');
+    const run = () => Promise.all([
+      s.closeAllConnections(), s.clearStorageData(), s.clearCache(), s.clearAuthCache(), s.clearHostResolverCache(),
+    ].map((p) => Promise.resolve(p).catch(() => {})));
+    const job = (this.privateClearing || Promise.resolve()).then(run);
+    this.privateClearing = job;
+    job.then(() => { if (this.privateClearing === job) this.privateClearing = null; });
+    return job;
+  }
+
+  // ----- Vues -----
+  view(tabId) { return this.views.get(tabId) || null; }
+  contents(tabId) { return this.views.get(tabId)?.webContents || null; }
+
+  tabIdFor(wc) {
+    for (const [id, v] of this.views) if (v.webContents === wc || v.webContents.id === wc) return id;
+    return null;
+  }
+
+  /** Crée (ou renvoie) la vue d'un onglet ; charge l'adresse de l'onglet ou la page de démarrage. */
+  ensure(tabId) {
+    const existing = this.views.get(tabId);
+    if (existing) return existing;
+    const tab = this.store.tabs.find((x) => x.id === tabId);
+    if (!tab) return null;
+    const ses = tab.isPrivate ? this.privateSession() : this.persistent;
+    const view = new WebContentsView({
+      webPreferences: {
+        session: ses,
+        preload: PAGE_PRELOAD,
+        sandbox: true,
+        contextIsolation: true,
+        nodeIntegration: false,
+        webviewTag: false,
+        spellcheck: false,
+        javascript: true, // réglage JavaScript appliqué à chaque document (onHeadersReceived), pas à la vue
+        backgroundThrottling: true,
+        safeDialogs: true,
+        zoomFactor: this.zoomFactor(),
+      },
+    });
+    view.setBackgroundColor(this.isDark() ? '#000000' : '#ffffff');
+    // WebRTC : jamais l'adresse IP locale ni celle cachée par un VPN ; en privé, rien hors du proxy.
+    view.webContents.setWebRTCIPHandlingPolicy(tab.isPrivate ? 'disable_non_proxied_udp' : 'default_public_interface_only');
+    this.views.set(tabId, view);
+    this.live.set(tabId, { loading: false, progress: 0, canGoBack: false, canGoForward: false, blocked: 0 });
+    { const wcId = view.webContents.id; view.webContents.once('destroyed', () => this.identity.delete(wcId)); }
+    this.wire(view.webContents, tabId);
+    this.emit('view', tabId, view.webContents); // extensions : nouvel onglet à suivre
+    this.applyUserAgent(tabId);
+    this.open(tabId, tab.url, { initial: true });
+    setImmediate(() => this.evictIfNeeded(tabId));
+    return view;
+  }
+
+  /** Charge une adresse dans l'onglet (null = page de démarrage locale). */
+  open(tabId, url, { initial = false } = {}) {
+    const wc = this.contents(tabId);
+    const tab = this.store.tabs.find((x) => x.id === tabId);
+    if (!wc || !tab) return;
+    // Onglet privé pendant l'effacement de la session privée précédente : chargement après la fin de l'effacement.
+    if (tab.isPrivate && this.privateClearing) {
+      this.privateClearing.then(() => { if (!wc.isDestroyed()) this.open(tabId, url, { initial }); });
+      return;
+    }
+    this.readerActive.delete(tabId);
+    if (isFileURL(url)) { this.showError(wc, this.t()('file_blocked'), url); return; }
+    if (url && url !== 'about:blank' && !url.startsWith('about:')) {
+      if (this.offline && /^https?:/.test(url)) {
+        // Mode démo hors ligne : page d'article locale, l'adresse affichée reste celle de l'onglet.
+        const html = scripts.demoArticle({ title: tab.title || stripWWW(hostOf(url)), host: stripWWW(hostOf(url)), minutes: tab.readingMinutes || 4, dark: this.isDark() });
+        wc.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+        return;
+      }
+      wc.loadURL(url).catch(() => {});
+      return;
+    }
+    // Accueil ou page vide : l'onglet repart de zéro (adresse, titre, icône et temps de lecture de l'ancien site).
+    if (!initial) this.store.updateTab(tabId, { url: url || null, title: '', faviconURL: null, themeColorHex: null, readingMinutes: 0 });
+    if (url === 'about:blank') { wc.loadURL('about:blank'); return; }
+    this.loadStartPage(wc);
+  }
+
+  loadStartPage(wc) {
+    const t = this.t();
+    const html = scripts.startPage({ dark: this.isDark(), bookmarks: this.store.bookmarks, folders: this.store.folders, title: t('new_tab'), rtl: t.rtl, lang: t.lang, privacy: t('start_privacy'), classic: this.store.settings.uiStyle === 'classic' });
+    wc.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+  }
+
+  /** Affiche la vue d'un onglet (sous le chrome) et détache l'ancienne, qui reste vivante. */
+  show(tabId) {
+    const view = this.ensure(tabId);
+    if (!view) return;
+    if (this.attached && this.attached !== tabId) {
+      const old = this.views.get(this.attached);
+      if (old) { try { this.win.contentView.removeChildView(old); } catch { /* déjà détachée */ } }
+    }
+    if (this.attached !== tabId || !this.win.contentView.children.includes(view)) {
+      this.win.contentView.addChildView(view, 0); // index 0 : toujours sous la vue du chrome
+    }
+    this.attached = tabId;
+    view.setBounds(this.pageBounds);
+    this.emit('shown', tabId);
+  }
+
+  setPageBounds(b) {
+    this.pageBounds = b;
+    const v = this.attached && this.views.get(this.attached);
+    if (v) v.setBounds(b);
+  }
+
+  focus() { const wc = this.attached && this.contents(this.attached); if (wc && !wc.isDestroyed()) wc.focus(); }
+
+  /** Garde au plus MAX_LIVE_VIEWS pages vivantes : les moins récemment visitées sont libérées (rechargées à l'ouverture). */
+  evictIfNeeded(keep) {
+    if (this.views.size <= MAX_LIVE_VIEWS) return;
+    const protect = new Set([keep, this.store.selected, this.attached]);
+    const visited = (id) => this.store.tabs.find((t) => t.id === id)?.lastVisited || 0;
+    const victims = [...this.views.keys()].filter((id) => !protect.has(id)).sort((a, b) => visited(a) - visited(b));
+    for (const id of victims.slice(0, this.views.size - MAX_LIVE_VIEWS)) this.discard(id);
+  }
+
+  discard(tabId) {
+    const view = this.views.get(tabId);
+    if (!view) return;
+    if (this.attached === tabId) { try { this.win.contentView.removeChildView(view); } catch { /* ignoré */ } this.attached = null; }
+    const wc = view.webContents;
+    this.blocker.forget(wc.id);
+    this.upgradedFrom.delete(wc.id);
+    this.lastGesture.delete(wc.id);
+    this.externalPrompt.delete(wc.id);
+    this.downloadState.delete(wc.id);
+    this.trustedNav.delete(wc.id);
+    this.popupGesture.delete(wc.id);
+    this.navSeq.delete(wc.id);
+    this.views.delete(tabId);
+    this.live.delete(tabId);
+    this.readerActive.delete(tabId);
+    try { if (!wc.isDestroyed()) wc.close({ waitForBeforeUnload: false }); } catch { /* ignoré */ }
+  }
+
+  discardAll() { for (const id of [...this.views.keys()]) this.discard(id); }
+
+  // ----- Événements d'une page -----
+  wire(wc, tabId) {
+    const update = (patch) => { const l = this.live.get(tabId); if (l) { Object.assign(l, patch); this.emit('change', tabId); } };
+    const navState = () => update({ canGoBack: wc.navigationHistory.canGoBack(), canGoForward: wc.navigationHistory.canGoForward() });
+
+    wc.on('did-start-loading', () => update({ loading: true, progress: 0.1 }));
+    wc.on('did-stop-loading', () => { update({ loading: false, progress: 1 }); navState(); this.emit('glass', tabId); });
+    const follow = (url) => this.followGoogleLogin(wc, url, () => this.applyUserAgent(tabId));
+    wc.on('will-redirect', (e) => { if (e.isMainFrame) follow(e.url); });
+    wc.on('did-start-navigation', (e) => {
+      const { isMainFrame, isSameDocument, initiator, url } = e;
+      if (!isMainFrame || isSameDocument) return;
+      follow(url);
+      this.navSeq.set(wc.id, (this.navSeq.get(wc.id) || 0) + 1);
+      // Fichier déposé sur la page ou toute autre navigation vers file: : arrêtée, page d'erreur à la place.
+      if (isFileURL(url)) {
+        setImmediate(() => { if (!wc.isDestroyed()) { wc.stop(); this.showError(wc, this.t()('file_blocked'), url); } });
+        return;
+      }
+      this.blocker.resetCount(wc.id);
+      // Navigation du navigateur (adresse, favori, Précédent : sans cadre initiateur) ou suivant un geste récent :
+      // seule une telle page, une fois affichée (did-navigate), remet à zéro le compteur de téléchargements. Une page
+      // qui se redirige seule vers des fichiers (location.href en boucle) ne le remet donc jamais à zéro.
+      this.trustedNav.set(wc.id, !initiator || this.recentGesture(wc));
+      update({ blocked: 0, progress: 0.2 });
+    });
+    wc.on('dom-ready', () => {
+      update({ progress: 0.6 });
+      const url = wc.getURL();
+      const css = this.blocker.cssFor(url);
+      if (css) wc.insertCSS(css).catch(() => {});
+      const tab = this.store.tabs.find((x) => x.id === tabId);
+      if (tab && this.isDarkened(tab)) wc.insertCSS(scripts.darkenCSS).catch(() => {});
+    });
+    wc.on('did-navigate', (_e, url, code) => {
+      // Nouveau document affiché (un téléchargement n'en affiche aucun) : de nouveau un téléchargement automatique
+      // permis, si la navigation venait du navigateur ou d'un geste de l'utilisateur.
+      if (this.trustedNav.get(wc.id)) this.downloadState.delete(wc.id);
+      this.trustedNav.delete(wc.id);
+      this.emit('navigated', tabId);
+      this.trackURL(tabId, url);
+      navState();
+      update({ blocked: this.blocker.count(wc.id) });
+      if (code >= 200 && code < 400 && url.startsWith('https://')) {
+        const from = this.upgradedFrom.get(wc.id);
+        if (from && from.replace(/^http:/, 'https:') === url) this.upgradedFrom.delete(wc.id);
+      }
+    });
+    wc.on('did-navigate-in-page', (_e, url, isMainFrame) => { if (isMainFrame) { this.trackURL(tabId, url); navState(); } });
+    // Session de l'onglet (privée ou non) : fixée à la création de la vue.
+    const isPrivate = !!this.store.tabs.find((x) => x.id === tabId)?.isPrivate;
+    wc.on('did-redirect-navigation', (e) => {
+      // https a renvoyé vers http : on reste en http pour ce site, sans boucler.
+      const { url, isMainFrame } = e;
+      if (!isMainFrame) return;
+      const from = this.upgradedFrom.get(wc.id);
+      if (from && url.startsWith('http://') && hostOf(url) === hostOf(from)) { this.httpOnlyFor(isPrivate).add(hostOf(url)); this.upgradedFrom.delete(wc.id); }
+    });
+    wc.on('page-title-updated', (_e, title) => {
+      if (this.isLocal(wc.getURL())) return;
+      this.store.updateTab(tabId, { title });
+      this.emit('change', tabId);
+    });
+    wc.on('page-favicon-updated', (_e, favicons) => {
+      if (this.isLocal(wc.getURL()) || !favicons?.length) return;
+      const tab = this.store.tabs.find((x) => x.id === tabId);
+      const icon = favicons.map(safeFaviconURL).find(Boolean);
+      if (tab && !tab.isPrivate && icon) this.store.updateTab(tabId, { faviconURL: icon });
+      this.emit('change', tabId);
+    });
+    wc.on('did-finish-load', () => {
+      const tab = this.store.tabs.find((x) => x.id === tabId);
+      if (tab && !this.isLocal(wc.getURL())) this.store.recordVisit(tab);
+      update({ loading: false, progress: 1 });
+      this.emit('glass', tabId);
+    });
+    wc.on('did-fail-load', (_e, code, description, validatedURL, isMainFrame) => {
+      if (!isMainFrame || code === ERR_ABORTED || code === 0) return;
+      const from = this.upgradedFrom.get(wc.id);
+      if (from && validatedURL === from.replace(/^http:/, 'https:')) {
+        // Le site n'existe pas en https : retour à l'adresse http d'origine.
+        this.upgradedFrom.delete(wc.id);
+        this.httpOnlyFor(isPrivate).add(hostOf(from));
+        wc.loadURL(from).catch(() => {});
+        return;
+      }
+      if (code === -302 /* ERR_UNKNOWN_URL_SCHEME */) { this.openExternal(validatedURL, wc); return; }
+      this.showError(wc, description, validatedURL);
+    });
+    wc.on('render-process-gone', () => {
+      this.readerActive.delete(tabId);
+      if (wc.isDestroyed()) return;
+      if (this.store.selected !== tabId) { this.discard(tabId); return; }
+      const tab = this.store.tabs.find((x) => x.id === tabId);
+      if (!tab) return;
+      const now = Date.now();
+      if (now - (this.crashReloads.get(tabId) || 0) >= CRASH_RELOAD_MS) { this.crashReloads.set(tabId, now); this.open(tabId, tab.url); return; }
+      // Second plantage en moins d'une minute : page d'erreur plutôt qu'une boucle plantage / rechargement.
+      this.showError(wc, this.t()('page_crashed'), tab.url || '');
+    });
+    wc.on('will-navigate', (e) => {
+      const { url } = e;
+      follow(url);
+      let scheme = '';
+      try { scheme = new URL(url).protocol; } catch { return; }
+      if (scheme === 'file:') { e.preventDefault(); setImmediate(() => { if (!wc.isDestroyed()) this.showError(wc, this.t()('file_blocked'), url); }); return; }
+      if (!INTERNAL_SCHEMES.has(scheme)) { e.preventDefault(); this.openExternal(url, wc); }
+    });
+    wc.setWindowOpenHandler(({ url, disposition }) => {
+      // target=_blank / window.open : un nouvel onglet dans Qafila (privé si l'onglet d'origine l'est), seulement
+      // juste après un geste de l'utilisateur, un onglet par geste (bloqueur de fenêtres surgissantes : Electron n'en a
+      // pas). Sans geste, rien ne s'ouvre et la barre le signale. « Ouvrir dans un nouvel onglet » (menu) n'est pas concerné.
+      // window.open avec des dimensions (disposition « new-window ») : vraie petite fenêtre reliée à la page (opener),
+      // indispensable aux connexions « Se connecter avec Google / Apple / Microsoft », aux paiements 3-D Secure…
+      const tab = this.store.tabs.find((x) => x.id === tabId);
+      const popup = disposition === 'new-window';
+      if (!/^https?:/.test(url) && !(popup && (url === 'about:blank' || url === ''))) { this.openExternal(url, wc); return { action: 'deny' }; }
+      const gesture = this.lastGesture.get(wc.id) || 0;
+      if (!this.recentGesture(wc) || this.popupGesture.get(wc.id) === gesture) { this.emit('popup-blocked', tabId, url); return { action: 'deny' }; }
+      this.popupGesture.set(wc.id, gesture);
+      if (popup) return { action: 'allow', overrideBrowserWindowOptions: this.popupOptions() };
+      this.emit('open-tab', { url, isPrivate: !!tab?.isPrivate, select: true });
+      return { action: 'deny' };
+    });
+    wc.on('did-create-window', (win) => this.wirePopup(win, tabId));
+    wc.on('enter-html-full-screen', () => this.emit('fullscreen', true, stripWWW(hostOf(wc.getURL()))));
+    wc.on('leave-html-full-screen', () => this.emit('fullscreen', false));
+    wc.on('found-in-page', (_e, result) => this.emit('found', tabId, result));
+    wc.on('update-target-url', (_e, url) => this.emit('status', tabId, url));
+    wc.on('before-input-event', (e, input) => this.emit('input', e, input));
+    // Gestes de l'utilisateur (clic, touche) : seuls eux autorisent l'ouverture d'une application externe.
+    wc.on('input-event', (_e, ev) => { if (GESTURE_EVENTS.has(ev?.type)) this.lastGesture.set(wc.id, Date.now()); });
+    wc.on('context-menu', (_e, params) => this.contextMenu(tabId, params));
+    wc.on('ipc-message', (_e, channel, data) => {
+      if (channel === 'qafila:page:info') this.onPageInfo(tabId, wc, data || {});
+      else if (channel === 'qafila:page:scroll') {
+        const n = (v) => (Number.isFinite(Number(v)) ? Math.max(-1e7, Math.min(1e7, Number(v))) : 0);
+        this.emit('scroll', tabId, { final: !!data?.final, y: n(data?.y), dy: n(data?.dy) });
+      } else if (channel === 'qafila:page:edge') { if (data?.edge === 'top' || data?.edge === 'bottom') this.emit('edge', tabId, data.edge); }
+      else if (channel === 'qafila:page:nav') { if (data?.dir === 'back') this.back(tabId); else if (data?.dir === 'forward') this.forward(tabId); }
+    });
+    wc.on('zoom-changed', (_e, dir) => this.emit('zoom', dir));
+  }
+
+  // ----- Fenêtres de connexion (window.open) -----
+  popupOptions() {
+    return {
+      width: 520, height: 680, minWidth: 320, minHeight: 240,
+      autoHideMenuBar: true,
+      backgroundColor: this.isDark() ? '#000000' : '#ffffff',
+      title: 'Qafila',
+      webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, webviewTag: false, spellcheck: false, safeDialogs: true },
+    };
+  }
+
+  /** Fenêtre ouverte par un site : mêmes gardes que les onglets ; ses propres liens s'ouvrent en onglets. */
+  wirePopup(win, tabId) {
+    if (!win || win.isDestroyed()) return;
+    this.popups.add(win);
+    win.removeMenu();
+    const wc = win.webContents;
+    const tab = this.store.tabs.find((x) => x.id === tabId);
+    wc.on('input-event', (_e, ev) => { if (GESTURE_EVENTS.has(ev?.type)) this.lastGesture.set(wc.id, Date.now()); });
+    // Fenêtre de connexion (« Se connecter avec Google ») : même identité Chrome que les onglets.
+    this.setIdentity(wc, this.userAgent);
+    const follow = (url) => this.followGoogleLogin(wc, url, () => this.setIdentity(wc, this.userAgent));
+    wc.on('will-redirect', (e) => { if (e.isMainFrame) follow(e.url); });
+    wc.on('did-start-navigation', (e) => { if (e.isMainFrame && !e.isSameDocument) follow(e.url); });
+    wc.on('will-navigate', (e) => {
+      follow(e.url);
+      let scheme = '';
+      try { scheme = new URL(e.url).protocol; } catch { return; }
+      if (scheme === 'file:') { e.preventDefault(); return; }
+      if (!INTERNAL_SCHEMES.has(scheme)) { e.preventDefault(); this.openExternal(e.url, wc); }
+    });
+    wc.setWindowOpenHandler(({ url }) => {
+      if (/^https?:/.test(url) && this.recentGesture(wc)) this.emit('open-tab', { url, isPrivate: !!tab?.isPrivate, select: true });
+      return { action: 'deny' };
+    });
+    wc.on('context-menu', (_e, p) => {
+      const t = this.t();
+      const items = [];
+      if (p.isEditable) items.push({ label: t('ctx_cut'), click: () => wc.cut() }, { label: t('ctx_copy'), click: () => wc.copy() }, { label: t('ctx_paste'), click: () => wc.paste() });
+      else if (p.selectionText) items.push({ label: t('ctx_copy'), click: () => wc.copy() });
+      if (p.linkURL) items.push({ label: t('action_copy_link'), click: () => copyText(p.linkURL) });
+      if (items.length) Menu.buildFromTemplate(items).popup({ window: win });
+    });
+    win.on('closed', () => { this.popups.delete(win); this.lastGesture.delete(wc.id); });
+  }
+
+  /** Ferme les fenêtres de connexion (fin de la navigation privée, fermeture de Qafila). */
+  closePopups({ privateOnly = false } = {}) {
+    for (const w of [...this.popups]) {
+      if (w.isDestroyed()) { this.popups.delete(w); continue; }
+      if (privateOnly && w.webContents.session === this.persistent) continue;
+      w.destroy();
+    }
+  }
+
+  /** Page d'erreur locale dans la langue de l'interface. */
+  showError(wc, message, url) {
+    const t = this.t();
+    const html = scripts.errorPage({ title: t('error_page_title'), message, url, lang: t.lang, rtl: t.rtl, dark: this.isDark() });
+    // Origine opaque (data: sans baseURLForDataURL) : la page d'erreur n'hérite jamais des droits du site.
+    wc.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html)).catch(() => {});
+  }
+
+  /** Un clic ou une touche dans la page il y a moins de GESTURE_WINDOW_MS. */
+  recentGesture(wc) { return Date.now() - (this.lastGesture.get(wc.id) || 0) <= GESTURE_WINDOW_MS; }
+
+  /**
+   * Téléchargement lancé par une page (règle de Chrome) : un geste de l'utilisateur (clic, touche) permet un
+   * téléchargement, et le premier téléchargement automatique passe aussi. Au-delà, il faut demander (une fois par
+   * site). Le compteur appartient à l'onglet : seule une nouvelle page ouverte par l'utilisateur le remet à zéro
+   * (did-navigate). Renvoie { ask: false } ou { ask: true, host }.
+   */
+  downloadVerdict(wc) {
+    if (!wc || wc.isDestroyed?.()) return { ask: false };
+    const now = Date.now();
+    const st = this.downloadState.get(wc.id) || { used: false, at: 0 };
+    const gesture = this.lastGesture.get(wc.id) || 0;
+    if (gesture > st.at || !st.used) { this.downloadState.set(wc.id, { used: true, at: now }); return { ask: false }; }
+    let host = '';
+    try { host = new URL(wc.getURL()).host; } catch { host = ''; }
+    return { ask: true, host: host || String(wc.getURL()).slice(0, 80) };
+  }
+
+  onPageInfo(tabId, wc, info) {
+    const tab = this.store.tabs.find((x) => x.id === tabId);
+    if (!tab) return;
+    // Pages locales (démo hors ligne, lecteur, erreur) : le temps de lecture de l'onglet est conservé.
+    const patch = {};
+    if (!this.isLocal(wc.getURL())) {
+      patch.readingMinutes = Math.max(0, Number(info.minutes) || 0);
+      // Seule une couleur « #rrggbb » est retenue (la barre Auto ne lit que ce format).
+      if (HEX_COLOR.test(String(info.color || ''))) patch.themeColorHex = String(info.color).toLowerCase();
+      const icon = safeFaviconURL(info.icon);
+      if (icon && !tab.isPrivate && !tab.faviconURL) patch.faviconURL = icon;
+    }
+    this.store.updateTab(tabId, patch);
+    this.emit('change', tabId);
+    this.emit('glass', tabId);
+  }
+
+  /** Les pages locales (data:, about:, lecteur, erreur) ne remplacent jamais l'adresse de l'onglet. */
+  isLocal(url) { return !url || /^(data|about|blob|chrome-error|chrome|devtools):/.test(url); }
+
+  trackURL(tabId, url) {
+    if (this.isLocal(url)) return;
+    const tab = this.store.tabs.find((x) => x.id === tabId);
+    if (!tab) return;
+    const patch = { url, lastVisited: Date.now() };
+    if (tab.url && hostOf(tab.url) !== hostOf(url)) { patch.faviconURL = null; patch.themeColorHex = null; patch.readingMinutes = 0; }
+    this.store.updateTab(tabId, patch);
+    this.readerActive.delete(tabId);
+    this.emit('change', tabId);
+  }
+
+  /**
+   * Ouvre mailto: / tel: dans l'application du système, uniquement juste après un geste de l'utilisateur dans la page
+   * (un geste = une demande au plus), avec une confirmation native comme Chrome, et une seule demande à la fois par page.
+   * Tout autre schéma (magnet:, facetime:, sms:…) est ignoré.
+   */
+  async openExternal(url, wc) {
+    let u;
+    try { u = new URL(url); } catch { return false; }
+    if (!EXTERNAL_SCHEMES.has(u.protocol) || !wc || wc.isDestroyed()) return false;
+    const last = this.lastGesture.get(wc.id) || 0;
+    if (Date.now() - last > GESTURE_WINDOW_MS) return false;
+    this.lastGesture.delete(wc.id);
+    if (this.externalPrompt.has(wc.id)) return false;
+    this.externalPrompt.add(wc.id);
+    try {
+      const t = this.t();
+      const { response } = await dialog.showMessageBox(this.win, {
+        type: 'question', buttons: [t('external_open'), t('cancel')], defaultId: 0, cancelId: 1, noLink: true,
+        message: t(u.protocol === 'tel:' ? 'external_open_tel' : 'external_open_mail'), detail: u.href.slice(0, 300),
+      });
+      if (response !== 0) return false;
+      await shell.openExternal(u.href);
+      return true;
+    } catch { return false; } finally { this.externalPrompt.delete(wc.id); }
+  }
+
+  /** Menu contextuel des pages : lien (nouvel onglet, onglet privé, copier, enregistrer), image (copier, enregistrer,
+   * adresse), édition, sélection (copier, rechercher), navigation (précédent, suivant, actualiser) et « Inspecter ». */
+  contextMenu(tabId, params) {
+    const wc = this.contents(tabId);
+    if (!wc) return;
+    const t = this.t();
+    const tab = this.store.tabs.find((x) => x.id === tabId);
+    const items = [];
+    const sep = () => { if (items.length && items[items.length - 1].type !== 'separator') items.push({ type: 'separator' }); };
+    const web = (u) => /^https?:/i.test(u || '');
+    if (params.linkURL && web(params.linkURL)) {
+      items.push({ label: t('open_in_new_tab'), click: () => this.emit('open-tab', { url: params.linkURL, isPrivate: !!tab?.isPrivate, select: false }) });
+      items.push({ label: t('open_in_private_tab'), click: () => this.emit('open-tab', { url: params.linkURL, isPrivate: true, select: true }) });
+      items.push({ label: t('action_copy_link'), click: () => copyText(params.linkURL) });
+      items.push({ label: t('save_link_as'), click: () => { this.lastGesture.set(wc.id, Date.now()); wc.downloadURL(params.linkURL); } });
+      sep();
+    } else if (params.linkURL) {
+      items.push({ label: t('action_copy_link'), click: () => copyText(params.linkURL) });
+      sep();
+    }
+    if (params.mediaType === 'image' && params.srcURL) {
+      items.push({ label: t('copy_image'), click: () => wc.copyImageAt(params.x, params.y) });
+      items.push({ label: t('save_image_as'), click: () => { this.lastGesture.set(wc.id, Date.now()); wc.downloadURL(params.srcURL); } });
+      items.push({ label: t('copy_image_address'), click: () => copyText(params.srcURL) });
+      sep();
+    }
+    if (params.isEditable) {
+      const f = params.editFlags || {};
+      items.push({ label: t('ctx_cut'), enabled: !!f.canCut, click: () => wc.cut() });
+      items.push({ label: t('ctx_copy'), enabled: !!f.canCopy, click: () => wc.copy() });
+      items.push({ label: t('ctx_paste'), enabled: !!f.canPaste, click: () => wc.paste() });
+      items.push({ label: t('ctx_select_all'), click: () => wc.selectAll() });
+      sep();
+    } else if (params.selectionText && params.selectionText.trim()) {
+      const text = params.selectionText.trim().replace(/\s+/g, ' ');
+      const short = text.length > 28 ? text.slice(0, 27) + '…' : text;
+      items.push({ label: t('ctx_copy'), click: () => wc.copy() });
+      items.push({ label: t('search_selection', short), click: () => this.emit('open-tab', { url: search.searchURL(text, this.store.settings), isPrivate: !!tab?.isPrivate, select: true }) });
+      sep();
+    }
+    if (!params.linkURL && params.mediaType === 'none' && !params.isEditable && !params.selectionText) {
+      items.push({ label: t('action_back'), enabled: wc.navigationHistory.canGoBack(), click: () => this.back(tabId) });
+      items.push({ label: t('action_forward'), enabled: wc.navigationHistory.canGoForward(), click: () => this.forward(tabId) });
+      items.push({ label: t('action_reload'), click: () => this.reload(tabId) });
+      sep();
+    }
+    // Entrées ajoutées par les extensions (chrome.contextMenus).
+    const extra = this.extensionMenuItems ? this.extensionMenuItems(wc, params) : [];
+    if (extra.length) { items.push(...extra); sep(); }
+    items.push({ label: t('inspect'), click: () => { wc.inspectElement(params.x, params.y); if (wc.isDevToolsOpened()) wc.devToolsWebContents?.focus(); } });
+    Menu.buildFromTemplate(items).popup({ window: this.win });
+  }
+
+  // ----- Navigation -----
+  load(tabId, url) { this.ensure(tabId); this.open(tabId, url); }
+  back(tabId) { const wc = this.contents(tabId); if (wc?.navigationHistory.canGoBack()) wc.navigationHistory.goBack(); }
+  forward(tabId) { const wc = this.contents(tabId); if (wc?.navigationHistory.canGoForward()) wc.navigationHistory.goForward(); }
+  reload(tabId) {
+    const wc = this.contents(tabId);
+    const tab = this.store.tabs.find((x) => x.id === tabId);
+    if (!wc || !tab) return;
+    if (this.isLocal(wc.getURL()) && !this.readerActive.has(tabId)) this.open(tabId, tab.url); else wc.reload();
+  }
+  stop(tabId) { this.contents(tabId)?.stop(); }
+  isLoading(tabId) { return !!this.live.get(tabId)?.loading; }
+
+  scrollTo(tabId, where) {
+    const js = where === 'top' ? "window.scrollTo({top:0,behavior:'smooth'})" : "window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'})";
+    this.contents(tabId)?.executeJavaScript(js, true).catch(() => {});
+  }
+
+  findInPage(tabId, text, opts = {}) {
+    const wc = this.contents(tabId);
+    if (!wc || !text) return 0;
+    return wc.findInPage(text, { forward: opts.forward !== false, findNext: !!opts.findNext, matchCase: !!opts.matchCase });
+  }
+  stopFind(tabId, action = 'clearSelection') { this.contents(tabId)?.stopFindInPage(action); }
+
+  async snapshot(tabId, width) {
+    const wc = this.contents(tabId);
+    if (!wc || wc.isDestroyed()) return null;
+    try {
+      let img = await wc.capturePage();
+      if (img.isEmpty()) return null;
+      if (width && img.getSize().width > width) img = img.resize({ width: Math.round(width) });
+      return img.toDataURL();
+    } catch { return null; }
+  }
+
+  // ----- Lecteur, assombrissement, user agent, zoom, JavaScript -----
+  async toggleReader(tabId) {
+    const wc = this.contents(tabId);
+    if (!wc) return false;
+    if (this.readerActive.has(tabId)) { this.readerActive.delete(tabId); if (wc.navigationHistory.canGoBack()) wc.navigationHistory.goBack(); else this.reload(tabId); return false; }
+    // Extraction dans un monde isolé : la page ne peut pas détourner JSON ni les prototypes du DOM de l'extracteur.
+    let json = null;
+    try { json = await wc.executeJavaScriptInIsolatedWorld(READER_WORLD, [{ code: scripts.reader }], true); } catch { json = null; }
+    if (typeof json !== 'string' || json.length > 20_000_000) return false;
+    let obj;
+    try { obj = JSON.parse(json); } catch { return false; }
+    if (!obj || typeof obj !== 'object') return false;
+    // Le domaine affiché vient du processus principal (adresse de l'onglet), jamais de la page.
+    const tab = this.store.tabs.find((x) => x.id === tabId);
+    const html = scripts.readerPage({
+      title: String(obj.title || '').slice(0, 500), byline: String(obj.byline || '').slice(0, 300),
+      tree: obj.tree, host: stripWWW(hostOf(tab?.url || wc.getURL())), lang: obj.lang,
+    }, this.isDark());
+    this.readerActive.add(tabId);
+    // Origine opaque : pas de baseURLForDataURL (sinon la page du lecteur prendrait l'origine, les cookies et le
+    // stockage du site). Les adresses de l'article sont déjà absolues.
+    await wc.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html)).catch(() => {});
+    this.emit('change', tabId);
+    return true;
+  }
+
+  /** Assombrir : réglage global (éventuellement limité au mode sombre), inversé par site via les exceptions. */
+  darkenByDefault() { const s = this.store.settings; return s.darkenSites && (!s.darkenOnlyInDarkMode || this.isDark()); }
+  isDarkened(tab) { const h = hostOf(tab?.url || ''); if (!h) return false; return this.darkenByDefault() !== (this.store.settings.darkenHosts || []).includes(h); }
+  applyDarken(tabId) {
+    const wc = this.contents(tabId);
+    const tab = this.store.tabs.find((x) => x.id === tabId);
+    if (!wc || !tab || this.isLocal(wc.getURL())) return;
+    const on = this.isDarkened(tab);
+    const js = `(function(){var id='qafila-darken';var el=document.getElementById(id);if(${on}){if(!el){el=document.createElement('style');el.id=id;el.textContent=${JSON.stringify(scripts.darkenCSS)};(document.head||document.documentElement).appendChild(el);}}else if(el){el.remove();}})();`;
+    wc.executeJavaScript(js, true).catch(() => {});
+  }
+  refreshDarken() { for (const id of this.views.keys()) this.applyDarken(id); }
+
+  isDesktop(tab) { const s = this.store.settings; const h = hostOf(tab?.url || ''); return s.desktopByDefault !== (!!h && (s.desktopHosts || []).includes(h)); }
+  applyUserAgent(tabId) {
+    const wc = this.contents(tabId);
+    const tab = this.store.tabs.find((x) => x.id === tabId);
+    if (!wc || !tab) return;
+    const s = this.store.settings;
+    const ua = s.customUserAgent ? s.customUserAgent : (this.isDesktop(tab) ? this.userAgent : MOBILE_UA);
+    if (ua === this.userAgent && isGoogleLogin(wc.getURL() || tab.url)) { this.useElectronIdentity(wc); return; }
+    this.setIdentity(wc, ua);
+  }
+  applyUserAgentToOpenTabs() { for (const id of this.views.keys()) this.applyUserAgent(id); }
+
+  /**
+   * Pages de connexion de Google (accounts.google.com, accounts.youtube.com) : Google refuse les navigateurs intégrés
+   * qui se présentent comme Chrome (« Ce navigateur ou cette application ne sont peut-être pas sécurisés ») mais accepte
+   * l'identité Electron d'origine, à condition qu'elle soit cohérente partout : en-tête User-Agent, navigator.userAgent
+   * et navigator.userAgentData (marques Chromium d'Electron), sans indices client ajoutés ni objet window.chrome
+   * (preload/page.js). Appelée avant chaque navigation principale (will-navigate, will-redirect, did-start-navigation) ;
+   * en quittant ces pages, l'identité habituelle revient (`restore`).
+   */
+  followGoogleLogin(wc, url, restore) {
+    if (!wc || wc.isDestroyed()) return;
+    const current = this.identity.get(wc.id);
+    if (isGoogleLogin(url)) { if (current === 'chrome') this.useElectronIdentity(wc); }
+    else if (current === 'electron' && /^https?:/.test(url)) { this.identity.delete(wc.id); restore(); }
+  }
+
+  useElectronIdentity(wc) {
+    if (!wc || wc.isDestroyed() || this.identity.get(wc.id) === 'electron') return;
+    this.identity.set(wc.id, 'electron');
+    try { if (wc.debugger.isAttached()) wc.debugger.detach(); } catch { /* déjà détaché */ }
+    wc.setUserAgent(this.electronUA);
+  }
+
+  /**
+   * Identité d'une page : user agent Chrome ordinaire → identité Google Chrome complète (user agent réduit + indices
+   * client) par le protocole des outils de développement ; autre user agent (mobile, personnalisé) → tel quel.
+   */
+  setIdentity(wc, ua) {
+    if (!wc || wc.isDestroyed()) return;
+    const chrome = ua === this.userAgent;
+    const key = chrome ? 'chrome' : ua;
+    if (this.identity.get(wc.id) === key) return;
+    this.identity.set(wc.id, key);
+    if (chrome) {
+      try {
+        if (!wc.debugger.isAttached()) wc.debugger.attach('1.3');
+        wc.debugger.sendCommand('Emulation.setUserAgentOverride', { userAgent: CHROME_UA, userAgentMetadata: chromeMetadata() })
+          .catch(() => { if (!wc.isDestroyed()) wc.setUserAgent(CHROME_UA); });
+        return;
+      } catch { /* débogueur indisponible : user agent seul */ }
+      wc.setUserAgent(CHROME_UA);
+      return;
+    }
+    if (wc.debugger.isAttached()) wc.debugger.sendCommand('Emulation.setUserAgentOverride', { userAgent: ua }).catch(() => {});
+    wc.setUserAgent(ua);
+  }
+
+  /**
+   * Réglage JavaScript changé : les pages web ouvertes sont rechargées (le nouvel en-tête s'applique au rechargement).
+   * Limite de l'en-tête CSP : un document servi par un service worker (depuis son cache) ne passe pas par
+   * onHeadersReceived. Les service workers des sites concernés (tous si le réglage global est coupé) sont donc
+   * supprimés des deux sessions avant le rechargement. `hosts` : sites dont JavaScript vient d'être coupé.
+   */
+  async reloadForJavaScript(hosts = null) {
+    const sessions = [this.persistent, this.private].filter(Boolean);
+    const origins = hosts ? this.originsOfHosts(hosts) : [null];
+    // Pages à recharger fixées maintenant : une page partie ailleurs entre-temps n'est pas ramenée en arrière.
+    const before = new Map([...this.views].map(([id, v]) => [id, { wc: v.webContents, seq: this.navSeq.get(v.webContents.id) || 0 }]));
+    await Promise.all(sessions.flatMap((s) => origins.map((origin) => s.clearStorageData({ storages: ['serviceworkers'], ...(origin ? { origin } : {}) }).catch(() => {}))));
+    for (const [id, { wc, seq }] of before) {
+      if (wc.isDestroyed() || (this.navSeq.get(wc.id) || 0) !== seq) continue;
+      if (/^https?:/.test(wc.getURL())) { this.readerActive.delete(id); wc.reload(); }
+    }
+  }
+
+  /**
+   * Origines (port compris) connues pour ces noms d'hôte : ports par défaut, pages ouvertes, onglets, historique,
+   * favoris et service workers en cours. Le réglage JavaScript vaut pour le nom d'hôte sans le port
+   * (https://nas.example:8443 compris) : le service worker de chaque port doit partir.
+   */
+  originsOfHosts(hosts) {
+    const wanted = new Set(hosts.map((h) => String(h).toLowerCase()));
+    const origins = new Set([...wanted].flatMap((h) => [`https://${h}`, `http://${h}`]));
+    const add = (url) => { try { const u = new URL(url); if (/^https?:$/.test(u.protocol) && wanted.has(u.hostname.toLowerCase())) origins.add(u.origin); } catch { /* adresse invalide */ } };
+    for (const v of this.views.values()) { try { add(v.webContents.getURL()); } catch { /* vue détruite */ } }
+    for (const list of [this.store.tabs, this.store.history, this.store.bookmarks]) for (const x of list || []) add(x?.url);
+    for (const s of [this.persistent, this.private].filter(Boolean)) {
+      try { for (const w of Object.values(s.serviceWorkers.getAllRunning())) add(w.scope); } catch { /* API absente */ }
+    }
+    return [...origins];
+  }
+
+  isJavaScriptEnabled(url) { const s = this.store.settings; if (!s.javascriptEnabled) return false; const h = hostOf(url || ''); return !h || !(s.javascriptDisabledHosts || []).includes(h); }
+
+  zoomFactor() { return Math.min(1.5, Math.max(0.8, (Number(this.store.settings.textZoom) || 100) / 100)); }
+  applyZoom() { const z = this.zoomFactor(); for (const v of this.views.values()) { try { v.webContents.setZoomFactor(z); } catch { /* ignoré */ } } }
+
+  /** Thème changé : fond des vues, pages locales (démarrage) rechargées, assombrissement réévalué. */
+  onThemeChanged() {
+    const bg = this.isDark() ? '#000000' : '#ffffff';
+    for (const [id, v] of this.views) {
+      v.setBackgroundColor(bg);
+      const tab = this.store.tabs.find((x) => x.id === id);
+      if (tab && !tab.url && !this.readerActive.has(id)) this.loadStartPage(v.webContents);
+      // Démo hors ligne : l'article local suit le thème comme le ferait un site (prefers-color-scheme).
+      else if (tab && this.offline && /^https?:/.test(tab.url || '') && !this.readerActive.has(id)) this.open(id, tab.url, { initial: true });
+    }
+    this.refreshDarken();
+  }
+
+  /** Les favoris changent : les pages de démarrage ouvertes les reflètent. */
+  refreshStartPages() {
+    for (const [id, v] of this.views) { const tab = this.store.tabs.find((x) => x.id === id); if (tab && !tab.url) this.loadStartPage(v.webContents); }
+  }
+
+  translate(tabId) {
+    const tab = this.store.tabs.find((x) => x.id === tabId);
+    if (!tab?.url || !/^https?:/.test(tab.url)) return;
+    const lang = this.store.settings.translateLanguage || 'fr';
+    this.load(tabId, `https://translate.google.com/translate?sl=auto&tl=${encodeURIComponent(lang)}&u=${encodeURIComponent(tab.url)}`);
+  }
+
+  /** Informations vivantes d'un onglet pour le chrome. */
+  liveState(tabId) {
+    const l = this.live.get(tabId) || { loading: false, progress: 0, canGoBack: false, canGoForward: false, blocked: 0 };
+    return { ...l, reader: this.readerActive.has(tabId), alive: this.views.has(tabId) };
+  }
+
+  /** Pour le bloqueur : adresse de la page d'un webContents (première partie). */
+  pageURLFor(wcId) {
+    for (const v of this.views.values()) if (v.webContents.id === wcId) return v.webContents.getURL();
+    return null;
+  }
+
+  clearData() {
+    return Promise.all([
+      this.persistent.clearStorageData(), this.persistent.clearCache(), this.persistent.clearAuthCache(), this.persistent.clearHostResolverCache(),
+    ]).catch(() => {});
+  }
+}
+
+module.exports = { copyText, TabManager, desktopUserAgent, MOBILE_UA, CHROME_UA, chromeMetadata, clientHintHeaders, requestedHints, isGoogleLogin, hostOf, stripWWW };

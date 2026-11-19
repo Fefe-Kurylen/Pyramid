@@ -1,0 +1,170 @@
+{
+  "name": "qafila-desktop",
+  "productName": "Qafila",
+  "version": "0.9.2",
+  "description": "Qafila pour PC : navigateur minimaliste et respectueux de la vie privée (Electron).",
+  "license": "MIT",
+  "private": true,
+  "main": "main/index.js",
+  "desktopName": "qafila.desktop",
+  "author": "Qafila",
+  "homepage": "https://qafila.fr",
+  "scripts": {
+    "start": "electron .",
+    "smoke": "node test/smoke.mjs",
+    "test": "node --test test/unit.test.mjs test/vault.test.mjs",
+    "i18n": "node scripts/i18n-from-android.mjs",
+    "dist:win": "electron-builder --win nsis --x64",
+    "dist:linux": "electron-builder --linux AppImage",
+    "dist:mac": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg",
+    "build:preload": "esbuild preload/src/browser-action-entry.js --bundle --platform=node --format=cjs --external:electron --target=node20 --legal-comments=none --outfile=preload/browser-action.js --log-level=warning",
+    "dist:store": "electron-builder --win appx --x64"
+  },
+  "devDependencies": {
+    "electron": "^45.3.3",
+    "electron-builder": "^26.18.0",
+    "esbuild": "^0.25.12"
+  },
+  "build": {
+    "appId": "fr.qafila.desktop",
+    "productName": "Qafila",
+    "artifactName": "Qafila-${version}-${os}.${ext}",
+    "asar": true,
+    "electronFuses": {
+      "runAsNode": false,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "onlyLoadAppFromAsar": true,
+      "grantFileProtocolExtraPrivileges": true,
+      "enableCookieEncryption": true
+    },
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main/**/*",
+      "preload/**/*",
+      "renderer/**/*",
+      "blocker/**/*",
+      "i18n/**/*",
+      "config/**/*",
+      "build/icon.png",
+      "build/icon.ico",
+      "build/icon-win.png",
+      "package.json",
+      "!preload/src/**"
+    ],
+    "extraResources": [
+      {
+        "from": "../shared/toolbar-actions.json",
+        "to": "shared/toolbar-actions.json"
+      },
+      {
+        "from": "../shared/settings-keys.json",
+        "to": "shared/settings-keys.json"
+      },
+      {
+        "from": "../shared/qafila-forms.js",
+        "to": "shared/qafila-forms.js"
+      },
+      {
+        "from": "../shared/support.json",
+        "to": "shared/support.json"
+      },
+      {
+        "from": "../shared/import/parse.mjs",
+        "to": "shared/import/parse.mjs"
+      }
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "shortcutName": "Qafila",
+      "createDesktopShortcut": true,
+      "include": "build/installer.nsh"
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "category": "Network",
+      "target": [
+        "AppImage"
+      ],
+      "executableName": "qafila",
+      "syncDesktopName": true
+    },
+    "mac": {
+      "icon": "build/icon-mac.png",
+      "category": "public.app-category.productivity",
+      "artifactName": "Qafila-${version}-${os}-${arch}.${ext}",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "identity": "-",
+      "hardenedRuntime": false,
+      "extendInfo": {
+        "NSCameraUsageDescription": "Un site que vous visitez demande la caméra (visioconférence). Qafila vous demande d'abord votre accord, site par site.",
+        "NSMicrophoneUsageDescription": "Un site que vous visitez demande le micro (visioconférence). Qafila vous demande d'abord votre accord, site par site."
+      }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Fefe-Kurylen",
+        "repo": "Qafila",
+        "releaseType": "release"
+      }
+    ],
+    "detectUpdateChannel": false,
+    "appx": {
+      "identityName": "Kurylen.Qafila",
+      "publisher": "CN=B85CD3FF-A422-425E-9A54-A6E74180E94E",
+      "publisherDisplayName": "Kurylen",
+      "applicationId": "Qafila",
+      "displayName": "Qafila",
+      "backgroundColor": "transparent",
+      "languages": [
+        "fr-FR",
+        "en-US",
+        "es-ES",
+        "de-DE",
+        "ar-SA"
+      ],
+      "minVersion": "10.0.19041.0",
+      "maxVersionTested": "10.0.26100.0",
+      "artifactName": "Qafila-Store-${version}.${ext}"
+    }
+  },
+  "dependencies": {
+    "electron-chrome-extensions": "^4.10.0",
+    "electron-chrome-web-store": "^0.13.0",
+    "electron-updater": "^6.8.11",
+    "hash-wasm": "^4.13.0"
+  }
+}

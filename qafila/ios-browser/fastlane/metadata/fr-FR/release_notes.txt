@@ -1,0 +1,1 @@
+Première version de Qafila : navigateur rapide et privé, barre flottante en verre entièrement réglable, onglets bien rangés, bloqueur intégré, aucune collecte de données.

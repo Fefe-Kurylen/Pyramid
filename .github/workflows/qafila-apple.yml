@@ -1,0 +1,152 @@
+# Qafila (navigateur de Kurylen, dépôt public Fefe-Kurylen/Qafila) publié chez Apple avec la clé App Store Connect
+# et le certificat Developer ID déjà rangés dans les secrets de ce dépôt (même compte Apple, choix de Félix) :
+#  - iPhone : signature App Store (certificat + profil créés pour l'envoi puis révoqués) et envoi sur App Store Connect
+#  - Mac : .dmg / .zip signés Developer ID + notarisés, gardés dans les artifacts (copiés ensuite dans la release Qafila)
+# Branche « qafila-apple » de ce dépôt : copie du code de Qafila (dossier qafila/, dépôt Qafila privé) + ce fichier.
+# Chaque envoi sur la branche relance la fabrication ; [iphone] ou [mac] dans le message = une seule des deux.
+name: Qafila - Apple
+on:
+  push:
+    branches: [qafila-apple]
+concurrency:
+  group: qafila-apple
+  cancel-in-progress: false
+jobs:
+  iphone:
+    if: ${{ !contains(github.event.head_commit.message, '[mac]') }}
+    runs-on: macos-26
+    env:
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      BUNDLE_ID: fr.qafila.QafilaBrowser
+    steps:
+      - uses: actions/checkout@v4
+      - name: Xcode par défaut du Mac (SDK iOS 26 exigé par Apple)
+        run: xcodebuild -version
+      - name: Générer le projet (XcodeGen)
+        working-directory: qafila/ios-browser
+        run: |
+          brew install xcodegen >/dev/null
+          QAFILA_TEAM_ID=$TEAM_ID xcodegen generate
+      - name: Clé App Store Connect
+        run: |
+          mkdir -p ~/private_keys
+          printf '%s' "${{ secrets.ASC_KEY_P8 }}" > ~/private_keys/AuthKey_$ASC_KEY_ID.p8
+      - name: Certificat de distribution + profil App Store (créés pour cet envoi)
+        id: sign
+        env:
+          ASC_KEY_PATH: /Users/runner/private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8
+          WORK: /Users/runner/signing
+        run: |
+          pip3 install --break-system-packages -q pyjwt cryptography 2>/dev/null || pip3 install -q pyjwt cryptography
+          python3 qafila/.github/scripts/apple_signing.py setup
+          KC=$HOME/signing/build.keychain
+          security create-keychain -p ci "$KC"
+          security set-keychain-settings -lut 3600 "$KC"
+          security unlock-keychain -p ci "$KC"
+          security import $HOME/signing/dist.p12 -k "$KC" -P ci -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k ci "$KC" >/dev/null
+          security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
+          UUID=$(security cms -D -i $HOME/signing/dist.mobileprovision | plutil -extract UUID raw -)
+          for d in "$HOME/Library/MobileDevice/Provisioning Profiles" "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"; do
+            mkdir -p "$d"; cp $HOME/signing/dist.mobileprovision "$d/$UUID.mobileprovision"; done
+          security find-identity -v -p codesigning "$KC"
+      - name: Archive signée (App Store)
+        working-directory: qafila/ios-browser
+        run: |
+          BUILD=$(TZ=Europe/Paris date +%y%m%d%H%M)
+          echo "BUILD=$BUILD" >> $GITHUB_ENV
+          set -o pipefail
+          xcodebuild -project QafilaBrowser.xcodeproj -scheme QafilaBrowser -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath build/Qafila.xcarchive \
+            CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="Apple Distribution" DEVELOPMENT_TEAM=$TEAM_ID \
+            PROVISIONING_PROFILE_SPECIFIER="${{ steps.sign.outputs.profile }}" QAFILA_SUPPORT_CHANNEL=store \
+            CURRENT_PROJECT_VERSION=$BUILD archive 2>&1 | tee archive.log | grep -E --line-buffered "error:|ARCHIVE" || true
+          grep -q "ARCHIVE SUCCEEDED" archive.log
+      - name: Envoi sur App Store Connect
+        working-directory: qafila/ios-browser
+        run: |
+          cat > build/ExportOptions.plist <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>$TEAM_ID</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>signingCertificate</key><string>Apple Distribution</string>
+            <key>provisioningProfiles</key><dict><key>$BUNDLE_ID</key><string>${{ steps.sign.outputs.profile }}</string></dict>
+            <key>uploadSymbols</key><true/>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict></plist>
+          PLIST
+          xcodebuild -exportArchive -archivePath build/Qafila.xcarchive -exportOptionsPlist build/ExportOptions.plist \
+            -exportPath build/export -authenticationKeyPath ~/private_keys/AuthKey_$ASC_KEY_ID.p8 \
+            -authenticationKeyID $ASC_KEY_ID -authenticationKeyIssuerID $ASC_ISSUER_ID | tail -n 30
+          test ${PIPESTATUS[0]} -eq 0
+          echo "✅ Qafila $(/usr/libexec/PlistBuddy -c 'Print :ApplicationProperties:CFBundleShortVersionString' build/Qafila.xcarchive/Info.plist) ($BUILD) envoyée sur App Store Connect"
+      - name: Journaux
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qafila-iphone-logs
+          path: qafila/ios-browser/archive.log
+          if-no-files-found: ignore
+      - name: Nettoyage (profil supprimé, certificat révoqué)
+        if: always()
+        env:
+          ASC_KEY_PATH: /Users/runner/private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8
+          WORK: /Users/runner/signing
+        run: |
+          python3 qafila/.github/scripts/apple_signing.py cleanup || true
+          security delete-keychain $HOME/signing/build.keychain 2>/dev/null || true
+          rm -rf $HOME/signing ~/private_keys
+
+  mac:
+    if: ${{ !contains(github.event.head_commit.message, '[iphone]') }}
+    runs-on: macos-26
+    defaults:
+      run:
+        working-directory: qafila/desktop
+    env:
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Signature Developer ID + notarisation
+        env:
+          CSC_LINK: ${{ secrets.MAC_CERT_P12 }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+          APPLE_API_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          mkdir -p ~/private_keys
+          printf '%s' "${{ secrets.ASC_KEY_P8 }}" > ~/private_keys/AuthKey_$ASC_KEY_ID.p8
+          export APPLE_API_KEY=~/private_keys/AuthKey_$ASC_KEY_ID.p8
+          node -e "
+            const f='package.json', j=require('./'+f), m=j.build.mac;
+            delete m.identity;
+            Object.assign(m, { hardenedRuntime: true, gatekeeperAssess: false, notarize: true,
+              entitlements: 'build/entitlements.mac.plist', entitlementsInherit: 'build/entitlements.mac.plist' });
+            require('fs').writeFileSync(f, JSON.stringify(j, null, 2));"
+          npx electron-builder --mac dmg zip --publish never
+          rm -rf ~/private_keys
+      - name: Vérification Apple (Gatekeeper)
+        run: |
+          for APP in dist/mac*/*.app; do
+            codesign --verify --deep --strict --verbose=2 "$APP"
+            spctl --assess --type execute --verbose=4 "$APP"
+            xcrun stapler validate "$APP"
+          done
+          ls -la dist | grep -Ei "dmg|zip"
+          echo "✅ Mac signée et notarisée"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qafila-mac
+          path: |
+            qafila/desktop/dist/*.dmg
+            qafila/desktop/dist/*.zip
