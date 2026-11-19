@@ -133,7 +133,7 @@ jobs:
             Object.assign(m, { hardenedRuntime: true, gatekeeperAssess: false, notarize: true,
               entitlements: 'build/entitlements.mac.plist', entitlementsInherit: 'build/entitlements.mac.plist' });
             require('fs').writeFileSync(f, JSON.stringify(j, null, 2));"
-          npx electron-builder --mac dmg zip --publish never
+          npx electron-builder --mac dmg zip --arm64 --x64 --publish never
           rm -rf ~/private_keys
       - name: Vérification Apple (Gatekeeper)
         run: |
