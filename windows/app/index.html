@@ -132,7 +132,7 @@ select{background:var(--panel2);color:var(--text);border:1px solid var(--line2);
 @media (max-width:760px){ #sideGrip{display:none} }
 /* ---------- Empty state ---------- */
 #empty{position:absolute;inset:0;top:calc(var(--hh) + var(--sat));display:grid;place-items:center;padding:24px}
-.drop{width:min(560px,100%);border:1.5px dashed var(--line2);border-radius:22px;padding:48px 28px;text-align:center;background:radial-gradient(ellipse at top,rgba(var(--accent-rgb),.10),transparent 70%);transition:.2s}
+.drop{width:min(640px,100%);border:1.5px dashed var(--line2);border-radius:22px;padding:48px 28px;text-align:center;background:radial-gradient(ellipse at top,rgba(var(--accent-rgb),.10),transparent 70%);transition:.2s}
 .drop.over{border-color:var(--accent);background:rgba(var(--accent-rgb),.10)}
 .drop .big{width:64px;height:64px;border-radius:18px;margin:0 auto 20px;background:rgba(var(--accent-rgb),.15);color:var(--accent);display:grid;place-items:center}
 .drop .big svg{width:30px;height:30px}
@@ -409,6 +409,19 @@ html:not(.reading) #reader,html:not(.reading) #rbar{display:none!important}
 .dspg b{position:absolute;left:4px;bottom:3px;font-size:10.5px;background:rgba(0,0,0,.6);color:#fff;border-radius:5px;padding:0 5px}
 .dspg button{position:absolute;top:3px;right:3px;width:20px;height:20px;border-radius:50%;background:rgba(0,0,0,.65);color:#fff;font-size:13px;line-height:20px;padding:0}
 .dsrow{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap}
+.dspg{cursor:pointer}
+.dspg.on{outline:2px solid var(--accent);outline-offset:1px}
+.dsprev{margin-top:14px;border:1px solid var(--line2);border-radius:12px;background:rgba(0,0,0,.18);padding:10px;display:grid;grid-template-columns:34px 1fr 34px;align-items:center;gap:6px}
+.dsprev.hidden{display:none}
+.dsprev .dsimg{height:min(42vh,420px);display:grid;place-items:center;cursor:zoom-in;min-width:0;color:var(--muted);font-size:13px}
+.dsprev .dsimg img{max-width:100%;max-height:min(42vh,420px);object-fit:contain;background:#fff;border-radius:4px;box-shadow:0 4px 18px rgba(0,0,0,.35)}
+.dsprev .ibtn{width:34px;height:34px}
+.dsprev .ibtn:disabled{opacity:.25}
+.dsprev .dscap{grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;font-size:12.5px;color:var(--muted);padding:0 4px}
+.dsprev .dscap button{font-size:12.5px;color:var(--muted);background:none;padding:2px 6px;border-radius:6px}
+.dsprev .dscap button:hover{background:rgba(255,255,255,.08)}
+.dslight{position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.88);display:grid;place-items:center;cursor:zoom-out;padding:18px}
+.dslight img{max-width:100%;max-height:calc(100vh - 36px);object-fit:contain;background:#fff;box-shadow:0 10px 40px rgba(0,0,0,.6)}
 @media (max-width:560px){ .dsgrid{grid-template-columns:1fr} }
 .updrow{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .updrow [data-uver]{font-weight:600;font-variant-numeric:tabular-nums}
@@ -474,6 +487,7 @@ html:not(.reading) #reader,html:not(.reading) #rbar{display:none!important}
   <div id="tabs"></div>
   <button class="ibtn newtab" id="openBtn" title="Ouvrir dans un nouvel onglet (Ctrl+O)" data-ic="plus"></button>
   <button class="ibtn hidden" id="scanBtn" title="Scanner avec le téléphone" data-ic="phone"></button>
+  <button class="ibtn hidden" id="dscanBtn" title="Numériser depuis une imprimante ou un scanner" data-ic="scanner"></button>
   <div class="hsep"></div>
   <button class="ibtn" id="undo" title="Annuler (Ctrl+Z)" data-ic="undo" disabled></button>
   <button class="ibtn" id="redo" title="Rétablir (Ctrl+Y)" data-ic="redo" disabled></button>
@@ -493,6 +507,7 @@ html:not(.reading) #reader,html:not(.reading) #rbar{display:none!important}
     <p>Glisse un ou plusieurs fichiers ici, ou choisis-les.<br>PDF · images (JPG, PNG, TIFF…) · Word · Excel · texte<br>Tout reste sur ton appareil 🔒</p>
     <button class="btn primary" id="openBig" data-ic="folder" style="height:44px;padding:0 22px">Ouvrir un fichier</button>
     <button class="btn ghost hidden" id="scanBig" data-ic="phone" style="height:44px;padding:0 18px;margin-left:6px">Scanner avec le téléphone</button>
+    <button class="btn ghost hidden" id="dscanBig" data-ic="scanner" style="height:44px;padding:0 18px;margin-left:6px">Numériser</button>
     <div class="feats"><span>✏️ Modifier le texte</span><span>✍️ Ajouter du texte</span><span>🖊️ Dessin</span><span>🖍️ Surligner</span><span>✒️ Signature</span><span>🔏 Certificat</span><span>🖼️ Images</span><span>🔄 Pivoter</span><span>🧩 Fusionner</span><span>✂️ Extraire</span></div>
   </div>
 </div>
@@ -3814,6 +3829,35 @@ async function dsPagesToPdf(pages){
    en la rouvrant on retrouve la numérisation en cours et les pages déjà reçues. */
 Object.assign(DSCAN, { pages: [], status: { txt: '', on: false }, O: null, ui: null });
 const dsPlural = n => `${n} page${n > 1 ? 's' : ''}`;
+DSCAN.sel = 0;
+/* Image d'aperçu d'une page numérisée (JPEG / PNG directement, PDF rendu par pdf.js) ; gardée dans p.url. */
+async function dsUrl(p){
+  if (p.url) return p.url;
+  if (p.type !== 'pdf') return (p.url = URL.createObjectURL(new Blob([p.data], { type: p.type === 'png' ? 'image/png' : 'image/jpeg' })));
+  if (!p.urlP) p.urlP = (async () => {
+    const doc = await pdfjsLib.getDocument({ data: new Uint8Array(p.data).slice(), isEvalSupported: false }).promise;
+    const pg = await doc.getPage(1), v0 = pg.getViewport({ scale: 1 }), vp = pg.getViewport({ scale: Math.min(3, 1400 / v0.width) });
+    const c = document.createElement('canvas'); c.width = vp.width; c.height = vp.height;
+    const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height);
+    await pg.render({ canvasContext: x, viewport: vp }).promise; doc.destroy();
+    return (p.url = URL.createObjectURL(await toBlob(c, 'image/jpeg', .9)));
+  })().catch(() => null);
+  return p.urlP;
+}
+/* Aperçu en grand, par-dessus tout : toucher pour fermer, ← → pour changer de page. */
+function dsLight(i){
+  const pages = DSCAN.pages; if (!pages[i]) return;
+  const el = document.createElement('div'); el.className = 'dslight'; el.title = 'Toucher pour fermer · ← → pour changer de page';
+  const show = async () => { const u = await dsUrl(pages[i]); el.innerHTML = u ? `<img src="${u}" alt="">` : ''; };
+  const key = e => {
+    if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); end(); }
+    else if (e.key === 'ArrowRight' && i < pages.length - 1) { i++; show(); }
+    else if (e.key === 'ArrowLeft' && i > 0) { i--; show(); }
+  };
+  const end = () => { el.remove(); removeEventListener('keydown', key, true); };
+  el.onclick = end; addEventListener('keydown', key, true);
+  document.body.appendChild(el); show();
+}
 function dsStatus(txt, on){ DSCAN.status = { txt, on: !!on }; if (DSCAN.ui) DSCAN.ui.status(); }
 function dsJob(){
   if (DSCAN.busy) return;
@@ -3831,6 +3875,7 @@ async function dsStartScan(){
   const r = await window.native.scannerScan(O.dev, { source: O.source, color: O.color, dpi: O.dpi, paper: O.paper }).catch(e => ({ ok: false, error: String(e) }));
   DSCAN.busy = false;
   if (r && r.ok && r.pages.length){
+    DSCAN.sel = DSCAN.pages.length;   // aperçu : première page de ce passage
     DSCAN.pages.push(...r.pages);
     dsStatus(`✅ ${dsPlural(r.pages.length)} numérisée${r.pages.length > 1 ? 's' : ''}` + (O.source === 'platen' ? ' — pose la page suivante ou ouvre le PDF' : ''), true);
     if (!DSCAN.ui) toast(`🖨️ ${dsPlural(r.pages.length)} numérisée${r.pages.length > 1 ? 's' : ''}`);
@@ -3853,7 +3898,7 @@ async function dsOpenPdf(){
     busy(false);
     const n = pages.length;
     pages.forEach(p => p.url && URL.revokeObjectURL(p.url));
-    DSCAN.pages = []; dsStatus('', false);
+    DSCAN.pages = []; DSCAN.sel = 0; dsStatus('', false);
     jobSet('dscan', { icon: 'scanner', title: 'Numérisation', txt: `${dsPlural(n)} ouverte${n > 1 ? 's' : ''} en PDF`, state: 'ok', open: null });
     await openFiles([new File([bytes], name, { type: 'application/pdf' })], false);
     return true;
@@ -3875,6 +3920,12 @@ async function openDevScan(){
       <div><span class="lbl">Qualité</span>${seg('dpi', [[150, '150 ppp'], [300, '300 ppp'], [600, '600 ppp']])}</div>
       <div><span class="lbl">Format</span>${seg('paper', [['A4', 'A4'], ['A5', 'A5'], ['Letter', 'Lettre'], ['Legal', 'Légal']])}</div>
     </div>
+    <div class="dsprev hidden" data-prev>
+      <button class="ibtn" data-pv="-1" data-ic="left" title="Page précédente"></button>
+      <div class="dsimg" data-big title="Agrandir"></div>
+      <button class="ibtn" data-pv="1" data-ic="right" title="Page suivante"></button>
+      <div class="dscap"><span data-cap></span><button data-del>🗑️ Retirer cette page</button></div>
+    </div>
     <div class="dspages" data-pages></div>
     <div class="scanst" data-st><i></i><span></span></div>
     <div class="dsrow"><button class="btn ghost" data-x>Fermer</button>
@@ -3885,6 +3936,7 @@ async function openDevScan(){
     const q = s => card.querySelector(s);
     const sel = q('[data-dev]'), st = q('[data-st]'), bScan = q('[data-scan]'), bOk = q('[data-ok]'), bRef = q('[data-refresh]');
     const ip = q('[data-ip]'), bAdd = q('[data-add]'), pgBox = q('[data-pages]');
+    const prev = q('[data-prev]'), big = q('[data-big]'), cap = q('[data-cap]');
     const save = () => dsSave({ dev: O.dev, source: O.source, color: O.color, dpi: O.dpi, paper: O.paper });
     const local = (txt, on) => { st.classList.toggle('on', !!on); st.querySelector('span').textContent = txt || ''; };
     let info = null;
@@ -3903,20 +3955,47 @@ async function openDevScan(){
       if (r && r.ok) { info = r; applyInfo(); if (!DSCAN.busy && !DSCAN.pages.length) dsStatus('', false); }
       else if (r && !DSCAN.busy) dsStatus('⚠️ ' + r.error, false);
     };
+    let shown = null;
+    const drawPrev = () => {
+      const n = DSCAN.pages.length;
+      prev.classList.toggle('hidden', !n);
+      if (!n) { big.innerHTML = ''; shown = null; return; }
+      DSCAN.sel = Math.max(0, Math.min(DSCAN.sel, n - 1));
+      const i = DSCAN.sel, p = DSCAN.pages[i];
+      cap.textContent = `Aperçu · page ${i + 1} / ${n}`;
+      prev.querySelector('[data-pv="-1"]').disabled = i === 0;
+      prev.querySelector('[data-pv="1"]').disabled = i === n - 1;
+      pgBox.querySelectorAll('.dspg').forEach((el, k) => el.classList.toggle('on', k === i));
+      if (shown === p) return;
+      shown = p; big.innerHTML = '<span>Chargement de l’aperçu…</span>';
+      dsUrl(p).then(u => { if (shown === p) big.innerHTML = u ? `<img src="${u}" alt="Page ${i + 1}">` : '<span>Aperçu indisponible</span>'; });
+    };
+    const select = i => { DSCAN.sel = i; drawPrev(); const el = pgBox.children[DSCAN.sel]; el && el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); };
+    const remove = i => { const p = DSCAN.pages[i]; if (!p) return; if (p.url) URL.revokeObjectURL(p.url); DSCAN.pages.splice(i, 1); if (DSCAN.sel >= i && DSCAN.sel > 0) DSCAN.sel--; drawPages(); dsJob(); };
     const drawPages = () => {
       pgBox.innerHTML = '';
       DSCAN.pages.forEach((p, i) => {
-        const el = document.createElement('div'); el.className = 'dspg';
-        if (p.type === 'pdf') el.textContent = 'PDF';
-        else { if (!p.url) p.url = URL.createObjectURL(new Blob([p.data], { type: p.type === 'png' ? 'image/png' : 'image/jpeg' })); el.innerHTML = `<img src="${p.url}" alt="">`; }
+        const el = document.createElement('div'); el.className = 'dspg'; el.title = 'Voir cette page';
         el.insertAdjacentHTML('beforeend', `<b>${i + 1}</b><button title="Retirer cette page">×</button>`);
-        el.querySelector('button').onclick = () => { if (p.url) URL.revokeObjectURL(p.url); DSCAN.pages.splice(i, 1); drawPages(); dsJob(); };
+        dsUrl(p).then(u => { if (u) el.insertAdjacentHTML('afterbegin', `<img src="${u}" alt="">`); else el.insertAdjacentText('afterbegin', 'PDF'); });
+        el.onclick = () => select(i);
+        el.querySelector('button').onclick = e => { e.stopPropagation(); remove(i); };
         pgBox.appendChild(el);
       });
       bOk.disabled = !DSCAN.pages.length || DSCAN.busy;
       bOk.querySelector('span').textContent = DSCAN.pages.length ? `Ouvrir en PDF (${dsPlural(DSCAN.pages.length)})` : 'Ouvrir en PDF';
-      pgBox.scrollLeft = pgBox.scrollWidth;
+      drawPrev();
+      const on = pgBox.children[DSCAN.sel]; if (on) on.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     };
+    prev.querySelectorAll('[data-pv]').forEach(b => b.onclick = () => select(DSCAN.sel + +b.dataset.pv));
+    big.onclick = () => dsLight(DSCAN.sel);
+    q('[data-del]').onclick = () => remove(DSCAN.sel);
+    card.tabIndex = -1;
+    card.addEventListener('keydown', e => {
+      if (e.target.closest('input,select') || !DSCAN.pages.length) return;
+      if (e.key === 'ArrowRight' && DSCAN.sel < DSCAN.pages.length - 1) select(DSCAN.sel + 1);
+      else if (e.key === 'ArrowLeft' && DSCAN.sel > 0) select(DSCAN.sel - 1);
+    });
     const refresh = () => {
       bScan.querySelector('span').textContent = DSCAN.busy ? 'Annuler' : (DSCAN.pages.length ? 'Numériser la suite' : 'Numériser');
       sel.disabled = bRef.disabled = bAdd.disabled = DSCAN.busy;
@@ -3974,8 +4053,7 @@ async function openDevScan(){
   dsJob();
 }
 if (window.native && window.native.scannerScan){
-  $('#rScan').classList.remove('hidden');
-  $('#rScan').onclick = openDevScan;
+  ['#rScan', '#dscanBtn', '#dscanBig'].forEach(k => { $(k).classList.remove('hidden'); $(k).onclick = openDevScan; });
   window.native.onScanner(ev => {
     if (ev.type === 'page' && DSCAN.busy){
       dsStatus(`📥 ${ev.n === 1 ? 'Page 1 reçue' : `Page ${ev.n} reçue`}…`, true);
