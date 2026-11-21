@@ -485,21 +485,24 @@ html:not(.reading) #reader,html:not(.reading) #rbar{display:none!important}
   /* ---- téléphone : tout tient sur l'écran, quelle que soit la taille d'interface choisie ---- */
   html,body{font-size:15px}
   :root,:root[data-density]{
-    --pb:min(calc(44px*var(--uiz)), calc((100vw - 56px)/8));      /* bouton d'en-tête : 7 boutons + logo sur une ligne */
+    --pb:min(calc(52px*var(--uiz)), calc((100vw - 52px)/6));      /* bouton d'en-tête : 6 boutons sur une ligne (logo caché) */
     --hh:calc(var(--pb) + 14px);
     --tabh:min(calc(44px*var(--uiz)), 54px);
-    --tb:min(calc(44px*var(--uiz)), calc((100vw - 64px)/9));      /* barre d'outils du bas : 9 boutons */
+    --tb:min(calc(54px*var(--uiz)), calc((100vw - 60px)/6));      /* barre d'outils du bas : 5 boutons */
   }
-  header{--ib:var(--pb);--is:calc(var(--pb)*.52);gap:4px;padding-left:8px;padding-right:8px;
+  header{--ib:var(--pb);--is:calc(var(--pb)*.56);gap:4px;padding-left:8px;padding-right:8px;
     height:calc(var(--hh) + var(--sat));min-height:0;flex-wrap:wrap;align-content:flex-start;overflow:hidden}
   .has-tabs header{height:calc(var(--hh) + var(--sat) + var(--tabh))}
   header>*{flex:none}
-  .logo{height:var(--hh);display:flex;align-items:center}
+  .logo{display:none!important}
+  #openBtn{margin-left:-2px}
   .logo .mark{width:var(--pb);height:var(--pb)}
   .hsep,#updBtn,#heartBtn,#scanBtn,#dscanBtn{display:none!important}
   .newtab,header .ibtn{width:var(--pb);height:var(--pb)}
   #setBtn{margin-left:auto}
   #exportBtn,#importBtn{width:var(--pb);height:var(--pb);padding:0!important;justify-content:center}
+  header .ibtn svg,#exportBtn svg{width:var(--is)!important;height:var(--is)!important}
+  #tools .ibtn svg,#rbar .ibtn svg,#pagebar .ibtn svg,#editBtn svg{width:var(--is)!important;height:var(--is)!important}
   #exportBtn span,#importBtn span{display:none}
   #tabs{order:10;flex:1 0 100%;height:var(--tabh);padding:0 0 6px;overflow-x:auto;overflow-y:hidden}
   html:not(.has-tabs) #tabs{display:none}
@@ -520,7 +523,7 @@ html:not(.reading) #reader,html:not(.reading) #rbar{display:none!important}
   .feats{gap:8px}
   .feats span{font-size:14px;padding:7px 12px}
   /* barres du bas */
-  #rbar,#tools,#pagebar{--ib:var(--tb);--is:calc(var(--tb)*.52);gap:3px;padding:5px}
+  #rbar,#tools,#pagebar{--ib:var(--tb);--is:calc(var(--tb)*.54);gap:3px;padding:6px}
   #rbar{--ib:min(calc(44px*var(--uiz)), 50px);--is:calc(var(--ib)*.52)}
   #rbar .sep,#tools .sep{display:none}
   #rPrev,#rNext,#rzOut,#rzIn,#rzFit,#findBtn{display:none!important}
@@ -531,7 +534,7 @@ html:not(.reading) #reader,html:not(.reading) #rbar{display:none!important}
   #tools{justify-content:space-between}
   #doneBtn{height:var(--ib);min-width:calc(var(--ib) + 8px);justify-content:center;padding:0}
   #doneBtn span{display:none}
-  #pagebar{--ib:min(calc(40px*var(--uiz)), calc((100vw - 90px)/8))}
+  #pagebar{--ib:min(calc(46px*var(--uiz)), 52px);--is:calc(var(--ib)*.54)}
   #prev,#next,#mvU,#mvD,#zOut,#zIn{display:none!important}
   main{bottom:calc(var(--tb) + 26px + var(--sab))}
   #rIn{padding-bottom:calc(30px + var(--tb) + 20px)}
@@ -560,7 +563,7 @@ html:not(.reading) #reader,html:not(.reading) #rbar{display:none!important}
   #rbar .num,#rbar>.ibtn,#pagebar .num,#pagebar>.ibtn,#pagebar .zl,#tools{border-color:rgba(255,255,255,.05)!important}
   [data-theme=clair] #rbar .num,[data-theme=clair] #rbar>.ibtn,[data-theme=clair] #pagebar .num,[data-theme=clair] #pagebar>.ibtn,[data-theme=clair] #pagebar .zl,[data-theme=clair] #tools{border-color:rgba(0,0,0,.06)!important}
   .ibtn,.btn{transition:background .12s,color .12s}
-  #rbar{--ib:min(calc(44px*var(--uiz)), calc((100vw - 240px)/3));gap:8px}
+  #rbar{--ib:min(calc(52px*var(--uiz)), calc((100vw - 230px)/3));--is:calc(var(--ib)*.54);gap:8px}
   #tools [data-tool=select],#tools [data-tool=pen],#tools [data-tool=hl],#tools [data-tool=rect],#tools [data-tool=wo]{display:none!important}
   #tools{justify-content:space-around}
   #rotL,#rotR,#addPg,#dup,#del,#zFit{display:none!important}
