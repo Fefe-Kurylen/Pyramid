@@ -26,6 +26,10 @@
 [data-radius=carre]{--rb:3px;--rc:5px}
 [data-radius=rond]{--rb:999px;--rc:24px}
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+html,body{overscroll-behavior:none}
+button,.btn,.ibtn,.thumb,.tab,header,.float,.feats,.menu,#side{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+button,#reader,#stage{touch-action:manipulation}
 html,body{height:100%;background:var(--bg);color:var(--text);font:14px/1.4 Inter,system-ui,sans-serif;overflow:hidden}
 button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 svg{width:var(--is);height:var(--is);flex:none}
@@ -477,6 +481,45 @@ html:not(.reading) #reader,html:not(.reading) #rbar{display:none!important}
   #pagebar .ibtn{width:34px;height:34px}
   #empty{top:calc(var(--hh) + var(--sat))}
   .drop{padding:36px 20px}
+  /* plus grand sur téléphone */
+  html,body{font-size:15px}
+  :root,:root[data-density]{--hh:calc(58px*var(--uiz))}
+  header{--ib:calc(44px*var(--uiz));--is:calc(23px*var(--uiz))}
+  .logo .mark{width:calc(var(--ib) - 2px);height:calc(var(--ib) - 2px)}
+  .newtab{width:var(--ib);height:var(--ib)}
+  #tabs{height:calc(48px*var(--uiz))}
+  .has-tabs main,.has-tabs #empty{top:calc(var(--hh) + var(--sat) + 48px*var(--uiz))}
+  .tab{height:calc(40px*var(--uiz));font-size:15.5px;max-width:260px}
+  .tab svg{width:18px;height:18px}
+  .tab .x{width:32px;height:32px}
+  .drop{padding:40px 18px}
+  .drop .big{width:80px;height:80px;border-radius:22px}
+  .drop .big svg{width:38px;height:38px}
+  .drop h1{font-size:31px}
+  .drop p{font-size:16.5px;line-height:1.5}
+  #empty .btn{height:calc(54px*var(--uiz))!important;font-size:17.5px;padding:0 26px!important;margin:6px 4px 0!important}
+  #empty .btn svg{width:22px;height:22px}
+  .feats{gap:10px}
+  .feats span{font-size:14.5px;padding:8px 13px}
+  #rbar,#tools,#pagebar{--ib:calc(44px*var(--uiz));--is:calc(23px*var(--uiz));gap:4px;padding:6px}
+  #rbar .sep,#tools .sep{display:none}
+  #rPrev,#rNext,#rzOut,#rzIn,#rzFit,#findBtn{display:none!important}
+  #rbar .num,#pagebar .num{font-size:15px;padding:0 4px}
+  .zl{font-size:14.5px;min-width:58px}
+  #editBtn{height:var(--ib);font-size:16.5px;padding:0 16px}
+  #tools .ibtn,#pagebar .ibtn{width:var(--ib);height:var(--ib)}
+  #doneBtn{height:var(--ib);min-width:calc(var(--ib) + 10px);justify-content:center}
+  #pagebar{--ib:calc(40px*var(--uiz));--is:calc(21px*var(--uiz))}
+  #prev,#next,#mvU,#mvD,#zOut,#zIn{display:none!important}
+  main{bottom:calc(16px + 56px*var(--uiz) + var(--sab))}
+  #rIn{padding-bottom:calc(30px + 56px*var(--uiz))}
+  #side{height:calc(118px*var(--uiz))}
+  .thumb{width:calc(72px*var(--uiz))}
+  .addpage{width:calc(72px*var(--uiz))}
+  .thumb .n{font-size:12.5px}
+  .menu button{font-size:15.5px;padding:12px 12px}
+  .menu small{font-size:13px}
+  .flab{font-size:14.5px}
 }
 </style>
 </head>
@@ -641,7 +684,7 @@ const ICON = {
   clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   search:'<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
   heart:'<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',
-  import:'<path d="M12 4v11m0 0-4-4m4 4 4-4"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>',
+  import:'<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M12 11v6m-3-3h6"/>',
   tabnew:'<rect x="3" y="5" width="18" height="15" rx="2"/><path d="M3 9h18M12 12v5M9.5 14.5h5"/>',
   pageadd:'<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M12 11v6M9 14h6"/>',
   pageend:'<path d="M6 3h8l4 4v8"/><path d="M14 3v4h4M6 3v18h7M18 18v5M15.5 20.5h5"/>',
@@ -1171,8 +1214,8 @@ function drawOverlayNow(){
       const hov = L === S.hover;
       ctx.save(); ctx.translate(L.x*k, L.y*k); ctx.rotate(L.ang);
       const y0 = (-L.asc*L.fs-1.5)*k, h = ((L.asc-L.desc)*L.fs+3)*k;
-      ctx.fillStyle = `rgba(${rgb},${hov?.16:.06})`; ctx.fillRect(-2*k, y0, (L.w+4)*k, h);
-      ctx.strokeStyle = `rgba(${rgb},${hov?.95:.45})`; ctx.lineWidth = (hov?1.6:1)*S.dpr; ctx.strokeRect(-2*k, y0, (L.w+4)*k, h);
+      ctx.fillStyle = `rgba(${rgb},${hov?.16:TOUCHUI?.07:.06})`; ctx.fillRect(-2*k, y0, (L.w+4)*k, h);
+      if (hov || !TOUCHUI){ ctx.strokeStyle = `rgba(${rgb},${hov?.95:.45})`; ctx.lineWidth = (hov?1.6:1)*S.dpr; ctx.strokeRect(-2*k, y0, (L.w+4)*k, h); }
       ctx.restore();
     }
   }
@@ -1493,6 +1536,31 @@ function dupSel(){
 
 /* ================= Pointer interaction ================= */
 let drag = null, lastTap = 0;
+const TOUCHUI = matchMedia('(hover: none)').matches;
+/* Écran tactile : un doigt qui glisse fait défiler la page, toucher = action ; deux doigts = zoom */
+const TP = new Map(); let pinch = null;
+const tdist = () => { const [a, b] = [...TP.values()]; return [Math.hypot(a.x - b.x, a.y - b.y), (a.x + b.x)/2, (a.y + b.y)/2]; };
+function stagePinchStart(){
+  if (drag){
+    const p = cur(), L = p && A(p);
+    if ((drag.mode === 'ink' || drag.mode === 'box') && L){ const i = L.indexOf(drag.a); if (i >= 0) L.splice(i, 1); }
+    drag = null; drawOverlay();
+  }
+  if (!S.scale) return;
+  const [d, cx, cy] = tdist(), wr = wrap.getBoundingClientRect();
+  pinch = { d0: Math.max(10, d), cx, cy, base: S.scale, r: 1 };
+  wrap.style.transformOrigin = `${cx - wr.left}px ${cy - wr.top}px`;
+}
+function stagePinchMove(){
+  const [d] = tdist();
+  pinch.r = Math.max(0.15/pinch.base, Math.min(6/pinch.base, d/pinch.d0));
+  wrap.style.transform = `scale(${pinch.r})`;
+}
+function stagePinchEnd(){
+  const P = pinch; pinch = null;
+  wrap.style.transform = ''; wrap.style.transformOrigin = '';
+  if (P && Math.abs(P.r - 1) > 0.02){ S.zoom = S.scale; zoomTo(P.base*P.r, P.cx, P.cy); }
+}
 function toPt(e){ const r = ov.getBoundingClientRect(); return { x:(e.clientX-r.left)/S.scale, y:(e.clientY-r.top)/S.scale }; }
 function hitTest(list, pt){
   const tol = 6/S.scale;
@@ -1529,6 +1597,22 @@ function startLineDrag(d, pt){
   })().catch(e => console.warn(e));
 }
 ov.addEventListener('pointerdown', e => {
+  if (e.pointerType === 'touch'){
+    TP.set(e.pointerId, { x:e.clientX, y:e.clientY });
+    if (TP.size >= 2){ e.preventDefault(); if (TP.size === 2) stagePinchStart(); return; }
+    if (cur() && MOVABLE.includes(S.tool)){
+      const pt = toPt(e), hit = hitTest(A(cur()), pt);
+      if (!chromeHit(pt) && !(hit && hit === S.sel)){
+        e.preventDefault(); try{ ov.setPointerCapture(e.pointerId); }catch{}
+        drag = { mode:'tpend', e:{ clientX:e.clientX, clientY:e.clientY, pointerId:e.pointerId, pointerType:'touch', button:0, altKey:false, preventDefault(){} },
+          sx:e.clientX, sy:e.clientY, sl:stage.scrollLeft, st:stage.scrollTop };
+        return;
+      }
+    }
+  }
+  ovDown(e);
+});
+function ovDown(e){
   if (!cur() || e.button>0) return;
   const pt = toPt(e);
   if (S.editing){
@@ -1578,9 +1662,18 @@ ov.addEventListener('pointerdown', e => {
   if (t === 'pen'){ const pr=S.prefs.pen; const a = { t:'ink', c:pr.c, s:pr.s, pts:[[pt.x,pt.y]] }; list.push(a); drag = { mode:'ink', a, pre }; }
   else { const pr=S.prefs[t]; const a = { t, c:pr.c, s:pr.s||2, x:pt.x, y:pt.y, w:0, h:0 }; list.push(a); drag = { mode:'box', a, start:pt, pre }; }
   drawOverlay();
-});
+}
 function toolCursor(){ return S.tool === 'select' ? 'default' : (S.tool === 'text' || S.tool === 'edit') ? 'text' : 'crosshair'; }
 ov.addEventListener('pointermove', e => {
+  if (e.pointerType === 'touch' && TP.has(e.pointerId)){
+    TP.set(e.pointerId, { x:e.clientX, y:e.clientY });
+    if (pinch){ stagePinchMove(); return; }
+    if (TP.size > 1) return;
+  }
+  if (drag && drag.mode === 'tpend'){
+    if (Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) > 8) drag.mode = 'pan';
+    else return;
+  }
   if (!drag){
     if (e.pointerType === 'mouse' && cur()){
       const ph = toPt(e), ch = chromeHit(ph);
@@ -1639,6 +1732,7 @@ const endDrag = () => {
   const d = drag; drag = null;
   if (S.guides){ S.guides = null; drawOverlay(); }
   const p = cur();
+  if (d.mode === 'tpend'){ ovDown(d.e); if (drag) endDrag(); return; }
   if (d.mode === 'pend'){ if (d.onClick) d.onClick(); return; }
   if (d.mode === 'pendLine'){ startTedit(d.L); return; }
   if (d.mode === 'lwait'){ d.ended = true; return; }
@@ -1692,8 +1786,16 @@ ov.addEventListener('contextmenu', async e => {
   }
   showMenu(at, items, true);
 });
-ov.addEventListener('pointerup', endDrag);
-ov.addEventListener('pointerleave', () => { if (S.tool === 'edit' && !tipFor) tipEl.classList.remove('show'); }); ov.addEventListener('pointercancel', endDrag);
+const ovUp = e => {
+  if (e.pointerType === 'touch'){
+    TP.delete(e.pointerId);
+    if (pinch){ if (TP.size < 2) stagePinchEnd(); return; }
+    if (TP.size) return;
+  }
+  endDrag();
+};
+ov.addEventListener('pointerup', ovUp);
+ov.addEventListener('pointerleave', () => { if (S.tool === 'edit' && !tipFor) tipEl.classList.remove('show'); }); ov.addEventListener('pointercancel', ovUp);
 
 /* ================= Text editing ================= */
 let editPre = null, editStart = 0;
@@ -3102,6 +3204,32 @@ function applyReaderScale(newRz, cy){
   clearTimeout(rRendT); rRendT = setTimeout(() => { for (const rp of RP) if (rp.vis && rp.state === 0) renderRP(rp); }, 140);
 }
 function readerZoom(f, cy){ applyReaderScale(Math.max(0.2, Math.min(6, rScale*f)), cy); }
+let RPZ = null;
+const tPair = t => [Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY), (t[0].clientX + t[1].clientX)/2, (t[0].clientY + t[1].clientY)/2];
+reader.addEventListener('touchstart', e => {
+  if (e.touches.length !== 2) return;
+  const [d, cx, cy] = tPair(e.touches), rr = rIn.getBoundingClientRect();
+  RPZ = { d0: Math.max(10, d), cx, cy, r: 1 };
+  rIn.style.transformOrigin = `${cx - rr.left}px ${cy - rr.top}px`;
+}, { passive:true });
+reader.addEventListener('touchmove', e => {
+  if (!RPZ || e.touches.length < 2) return;
+  e.preventDefault();
+  RPZ.r = Math.max(0.2/rScale, Math.min(6/rScale, tPair(e.touches)[0]/RPZ.d0));
+  rIn.style.transform = `scale(${RPZ.r})`;
+}, { passive:false });
+const rPinchEnd = e => {
+  if (!RPZ || e.touches.length >= 2) return;
+  const { r, cx, cy } = RPZ; RPZ = null;
+  rIn.style.transform = ''; rIn.style.transformOrigin = '';
+  if (Math.abs(r - 1) < 0.02) return;
+  const rb = reader.getBoundingClientRect(), relX = cx - rb.left, sl = reader.scrollLeft, r0 = rScale;
+  readerZoom(r, cy - rb.top);
+  reader.scrollLeft = (sl + relX)*(rScale/r0) - relX;
+};
+reader.addEventListener('touchend', rPinchEnd); reader.addEventListener('touchcancel', rPinchEnd);
+/* iPhone : pas de zoom de toute la page (seul le document zoome) */
+['gesturestart','gesturechange'].forEach(t => document.addEventListener(t, e => e.preventDefault()));
 reader.addEventListener('wheel', e => {
   if (!(e.ctrlKey || e.metaKey)) return;
   e.preventDefault();
