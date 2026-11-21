@@ -55,9 +55,9 @@ struct AddressEditorRow: View {
     var body: some View {
         HStack(spacing: 10) {
             HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass").font(.system(size: 16 * ui, weight: .semibold)).foregroundStyle(.secondary)
+                Image(systemName: "magnifyingglass").font(.system(size: 16 * ui, weight: .medium)).foregroundStyle(.secondary)
                 TextField("Rechercher ou saisir une adresse", text: $editor.text)
-                    .font(.system(size: 17 * ui, weight: .medium))
+                    .font(.system(size: 17 * ui))
                     .focused($focused)
                     .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.webSearch).submitLabel(.go)
                     .onSubmit { submit(editor.text) }
@@ -73,7 +73,7 @@ struct AddressEditorRow: View {
                 card.fill(cardColor).overlay(card.strokeBorder(Color.primary.opacity(0.14), lineWidth: 0.75))
             }
 
-            Button { cancel() } label: { Text("Annuler").font(.system(size: 17 * ui, weight: .semibold)).padding(.horizontal, 4).frame(minHeight: 44).contentShape(Rectangle()) }
+            Button { cancel() } label: { Text("Annuler").font(.system(size: 17 * ui)).padding(.horizontal, 4).frame(minHeight: 44).contentShape(Rectangle()) }
                 .buttonStyle(.plain).foregroundStyle(.primary)
         }
         .onAppear {
@@ -101,22 +101,27 @@ struct SuggestionsPanel: View {
         VStack(alignment: .leading, spacing: 0) {
             if showingDefaults {
                 if !store.bookmarks.isEmpty {
-                    header("FAVORIS")
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 14) {
-                            ForEach(store.bookmarks.prefix(10)) { b in
-                                Button { go(b.url.absoluteString) } label: {
-                                    VStack(spacing: 6) {
-                                        Text(String(b.title.prefix(1)).uppercased())
-                                            .font(.system(size: 22, weight: .semibold, design: .serif))
-                                            .frame(width: 56, height: 56)
-                                            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.primary.opacity(0.07)))
-                                        Text(b.title).font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary).lineLimit(1).frame(width: 66)
-                                    }
-                                }.buttonStyle(.plain)
-                            }
-                        }.padding(.horizontal, 14)
-                    }.padding(.bottom, 8)
+                    if store.settings.favoritesStyle == .icons {
+                        FavoritesGrid(icons: store.tabManager.siteIcons, limit: 8) { go($0.url.absoluteString) }
+                            .padding(.bottom, 6)
+                    } else {
+                        header("FAVORIS")
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 14) {
+                                ForEach(store.bookmarks.prefix(10)) { b in
+                                    Button { go(b.url.absoluteString) } label: {
+                                        VStack(spacing: 6) {
+                                            Text(String(b.title.prefix(1)).uppercased())
+                                                .font(.system(size: 22, weight: .semibold, design: .serif))
+                                                .frame(width: 56, height: 56)
+                                                .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.primary.opacity(0.07)))
+                                            Text(b.title).font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary).lineLimit(1).frame(width: 66)
+                                        }
+                                    }.buttonStyle(.plain)
+                                }
+                            }.padding(.horizontal, 14)
+                        }.padding(.bottom, 8)
+                    }
                 }
                 let recent = Array(store.history.prefix(4))
                 if !recent.isEmpty {
@@ -147,7 +152,7 @@ struct SuggestionsPanel: View {
             HStack(spacing: 12) {
                 Image(systemName: icon).font(.system(size: 16, weight: .semibold)).foregroundStyle(.secondary).frame(width: 22)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(text).font(.system(size: 17, weight: .medium)).foregroundStyle(.primary).lineLimit(1)
+                    Text(text).font(.system(size: 17)).foregroundStyle(.primary).lineLimit(1)
                     if let d = detail { Text(d).font(.system(size: 13, weight: .medium)).foregroundStyle(.secondary).lineLimit(1) }
                 }
                 Spacer(minLength: 0)
@@ -159,4 +164,92 @@ struct SuggestionsPanel: View {
     }
 
     private func go(_ s: String) { store.navigate(s); editor.reset() }
+}
+
+/// Favoris façon Safari : titre « Favoris » et « Tout afficher », grille de 4 grandes icônes de sites avec leur nom.
+struct FavoritesGrid: View {
+    @EnvironmentObject var store: BrowserStore
+    @ObservedObject var icons: SiteIcons
+    var limit = 8
+    var open: (Bookmark) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Favoris").font(.system(size: 22, weight: .bold))
+                Spacer()
+                Button { store.isEditingAddress = false; store.showBookmarks = true } label: {
+                    HStack(spacing: 3) {
+                        Text("Tout afficher").font(.system(size: 16, weight: .semibold))
+                        Image(systemName: "chevron.right").font(.system(size: 13, weight: .bold))
+                    }
+                    .foregroundStyle(.secondary)
+                    .frame(minHeight: 36).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10, alignment: .top), count: 4), spacing: 16) {
+                ForEach(store.bookmarks.prefix(limit)) { b in
+                    Button { open(b) } label: { FavoriteTile(bookmark: b, image: icons.images[b.url.host ?? ""] ?? store.tabManager.icon(for: b.url.host)) }
+                        .buttonStyle(CardPressStyle())
+                }
+            }
+        }
+        .padding(.horizontal, 18).padding(.top, 10)
+    }
+}
+
+struct FavoriteTile: View {
+    let bookmark: Bookmark
+    let image: UIImage?
+    var body: some View {
+        VStack(spacing: 7) {
+            FavoriteTileIcon(bookmark: bookmark, image: image, size: 66)
+            Text(bookmark.title).font(.system(size: 13, weight: .semibold)).foregroundStyle(.primary)
+                .lineLimit(2).multilineTextAlignment(.center).frame(maxWidth: 80)
+        }
+        .frame(maxWidth: .infinity)
+        .contentShape(Rectangle())
+    }
+}
+
+/// Carré arrondi avec l'icône du site (ou sa première lettre). L'icône se fond dans sa tuile : fond de la couleur de
+/// ses bords, et une grande icône opaque couvre toute la tuile (comme les favoris de Safari).
+struct FavoriteTileIcon: View {
+    let bookmark: Bookmark
+    let image: UIImage?
+    var size: CGFloat = 66
+
+    private final class Style { let color: Color?; let fill: Bool; init(_ c: Color?, _ f: Bool) { color = c; fill = f } }
+    private static let styles: NSCache<UIImage, Style> = { let c = NSCache<UIImage, Style>(); c.countLimit = 300; return c }()
+    private static func style(_ img: UIImage) -> Style {
+        if let s = styles.object(forKey: img) { return s }
+        let t = img.tileStyle()
+        let s = Style(t.flatMap { $0.hex.isEmpty ? nil : Color(uiColor: $0.color) }, t?.fill ?? false)
+        styles.setObject(s, forKey: img)
+        return s
+    }
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: size * 0.24, style: .continuous)
+        let st = image.map(Self.style)
+        shape.fill(st?.color ?? Color.primary.opacity(0.08))
+            .frame(width: size, height: size)
+            .overlay {
+                if let image {
+                    if st?.fill == true {
+                        Image(uiImage: image).resizable().interpolation(.high).scaledToFill()
+                            .frame(width: size, height: size)
+                    } else {
+                        Image(uiImage: image).resizable().interpolation(.high).scaledToFit()
+                            .frame(width: size * 0.64, height: size * 0.64)
+                    }
+                } else {
+                    Text(String(bookmark.title.trimmingCharacters(in: .whitespaces).prefix(1)).uppercased())
+                        .font(.system(size: size * 0.4, weight: .semibold, design: .rounded)).foregroundStyle(.secondary)
+                }
+            }
+            .clipShape(shape)
+            .overlay(shape.strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5))
+    }
 }

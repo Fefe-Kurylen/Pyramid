@@ -23,7 +23,7 @@ struct ChromePalette {
     /// Carte d'adresse posée sur le verre : blanc à 12–16 % sur verre sombre, 55–65 % sur verre clair (plus opaque quand le verre l'est).
     func glassCard(_ transparency: Double) -> Color {
         let solid = 1 - min(max(transparency, 0), 1)
-        return contentScheme == .dark ? Color.white.opacity(0.12 + 0.04 * solid) : Color.white.opacity(0.55 + 0.10 * solid)
+        return contentScheme == .dark ? Color.white.opacity(0.10 + 0.05 * solid) : Color.white.opacity(0.42 + 0.15 * solid)
     }
 }
 
@@ -89,7 +89,9 @@ struct GlassSurface: View {
     @ViewBuilder private var surface: some View {
         #if compiler(>=6.2)
         if #available(iOS 26.0, *) {
-            let glass = Glass.regular.tint(palette.bar.opacity(1 - t))
+            // Teinte légère : le verre laisse vraiment voir la page (avant, la teinte presque opaque le rendait
+            // identique au style Classique). Transparence 0 % = verre fortement teinté, 100 % = verre clair.
+            let glass = Glass.regular.tint(palette.bar.opacity((1 - t) * 0.6))
             Color.clear.glassEffect(interactive ? glass.interactive() : glass, in: shape)
         } else {
             fallback
@@ -102,7 +104,7 @@ struct GlassSurface: View {
     /// iOS 17/18 : matériau ultra-fin teinté (liseré et ombre ajoutés par `body`, communs à toutes les versions).
     private var fallback: some View {
         shape.fill(.ultraThinMaterial)
-            .overlay(shape.fill(palette.bar.opacity(0.05 + (1 - t) * 0.95)))
+            .overlay(shape.fill(palette.bar.opacity(0.04 + (1 - t) * 0.56)))
     }
 }
 
@@ -216,8 +218,8 @@ struct AddressCard: View {
     @ViewBuilder private var content: some View {
         if isStart {
             HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass").font(.system(size: 16 * ui, weight: .semibold))
-                Text("Rechercher ou saisir une adresse").font(.system(size: 16 * ui, weight: .medium)).lineLimit(1)
+                Image(systemName: "magnifyingglass").font(.system(size: 16 * ui, weight: .medium))
+                Text("Rechercher ou saisir une adresse").font(.system(size: 17 * ui)).lineLimit(1)
             }
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: style == .card || style == .fullURL || style == .titleReading ? .leading : .center)
@@ -240,7 +242,7 @@ struct AddressCard: View {
             if s.addressShowsFavicon { Favicon(tab: tab, size: (inline ? 20 : 24) * ui) }
             VStack(alignment: .leading, spacing: 1) {
                 Text(domain).font(.system(size: 11 * ui, weight: .bold)).tracking(0.5).foregroundStyle(.secondary).lineLimit(1)
-                Text(title).font(.system(size: 15.5 * ui, weight: .semibold)).foregroundStyle(.primary).lineLimit(1)
+                Text(title).font(.system(size: 16 * ui, weight: .medium)).foregroundStyle(.primary).lineLimit(1)
             }
             Spacer(minLength: 4)
             if s.addressShowsReadingTime, let r = tab?.readingLabel { ReadingPill(text: r) }
@@ -251,7 +253,7 @@ struct AddressCard: View {
         HStack(spacing: 8) {
             if s.addressShowsFavicon { Favicon(tab: tab, size: 20 * ui) }
             if tab?.url?.scheme == "https" { Image(systemName: "lock.fill").font(.system(size: 11 * ui, weight: .semibold)).foregroundStyle(.secondary) }
-            Text(tab?.url.map(Self.shortURL) ?? "").font(.system(size: 16 * ui, weight: .medium)).foregroundStyle(.primary).lineLimit(1).truncationMode(.middle)
+            Text(tab?.url.map(Self.shortURL) ?? "").font(.system(size: 17 * ui)).foregroundStyle(.primary).lineLimit(1).truncationMode(.middle)
             Spacer(minLength: 4)
             if s.addressShowsReadingTime, let r = tab?.readingLabel { ReadingPill(text: r) }
         }
@@ -260,7 +262,7 @@ struct AddressCard: View {
     private var domainLayout: some View {
         HStack(spacing: 6) {
             if s.addressShowsFavicon { Favicon(tab: tab, size: 19 * ui) }
-            Text(tab?.host ?? "").font(.system(size: 17 * ui, weight: .semibold)).foregroundStyle(.primary).lineLimit(1)
+            Text(tab?.host ?? "").font(.system(size: 17 * ui, weight: .medium)).foregroundStyle(.primary).lineLimit(1)
             if s.addressShowsReadingTime, let r = tab?.readingLabel { Text("· \(r)").font(.system(size: 14 * ui, weight: .medium)).foregroundStyle(.secondary) }
         }
         .frame(maxWidth: .infinity)
@@ -270,7 +272,7 @@ struct AddressCard: View {
         HStack(spacing: 10) {
             if s.addressShowsFavicon { Favicon(tab: tab, size: 24 * ui) }
             VStack(alignment: .leading, spacing: 1) {
-                Text(title).font(.system(size: 16 * ui, weight: .semibold)).foregroundStyle(.primary).lineLimit(1)
+                Text(title).font(.system(size: 16 * ui, weight: .medium)).foregroundStyle(.primary).lineLimit(1)
                 if s.addressShowsReadingTime, let r = tab?.readingLabel {
                     Text(L("%@ de lecture", r)).font(.system(size: 12.5 * ui, weight: .medium)).foregroundStyle(.secondary)
                 } else {
@@ -285,7 +287,7 @@ struct AddressCard: View {
         VStack(spacing: 1) {
             Text(domain).font(.system(size: 11 * ui, weight: .bold)).tracking(0.5).foregroundStyle(.secondary).lineLimit(1)
             HStack(spacing: 6) {
-                Text(title).font(.system(size: 15.5 * ui, weight: .semibold)).foregroundStyle(.primary).lineLimit(1)
+                Text(title).font(.system(size: 16 * ui, weight: .medium)).foregroundStyle(.primary).lineLimit(1)
                 if s.addressShowsReadingTime, let r = tab?.readingLabel { Text(r).font(.system(size: 12.5 * ui, weight: .medium)).foregroundStyle(.secondary) }
             }
         }

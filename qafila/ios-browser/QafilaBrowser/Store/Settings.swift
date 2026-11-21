@@ -129,8 +129,16 @@ enum ButtonWeight: String, Codable, CaseIterable, Identifiable {
     case thin, regular, bold
     var id: String { rawValue }
     var label: String { switch self { case .thin: return L("Fine"); case .regular: return L("Normale"); case .bold: return L("Grasse") } }
-    var fontWeight: Font.Weight { switch self { case .thin: return .regular; case .regular: return .medium; case .bold: return .semibold } }
-    var stroke: CGFloat { switch self { case .thin: return 1.5; case .regular: return 1.9; case .bold: return 2.3 } }
+    /// « Normale » = poids des icônes de Safari (regular) ; « Fine » plus légère, « Grasse » plus appuyée.
+    var fontWeight: Font.Weight { switch self { case .thin: return .light; case .regular: return .regular; case .bold: return .semibold } }
+    var stroke: CGFloat { switch self { case .thin: return 1.3; case .regular: return 1.65; case .bold: return 2.2 } }
+}
+
+/// Affichage des favoris (saisie d'adresse, page de démarrage) : grandes icônes de sites façon Safari, ou lettres en ligne.
+enum FavoritesStyle: String, Codable, CaseIterable, Identifiable {
+    case icons, letters
+    var id: String { rawValue }
+    var label: String { self == .icons ? L("Icônes (grille)") : L("Lettres (ligne)") }
 }
 
 /// Taille de l'interface (barre, menu, onglets) : multiplie les dimensions et les polices de la barre.
@@ -252,6 +260,7 @@ struct Settings: Codable, Equatable {
     var glassTransparency: Double = 0.5
     var buttonWeight: ButtonWeight = .regular
     var interfaceSize: InterfaceSize = .standard
+    var favoritesStyle: FavoritesStyle = .icons
     var menuIcon: MenuIconStyle = .dots
     var scrollBehavior: ScrollBehavior = .shrink
     var landscapeTopBar: Bool = true
@@ -304,7 +313,7 @@ extension Settings {
     enum CodingKeys: String, CodingKey {
         case searchEngine, searchBaseURL, customSearchTemplate, suggestions, hideAIAnswers, newTabPage, newTabCustomURL
         case appearance, accent, barColorLight, barColorDark, appIcon, haptics
-        case toolbar, glassTransparency, buttonWeight, interfaceSize, menuIcon, scrollBehavior, landscapeTopBar, edgeSwipeNavigation
+        case toolbar, glassTransparency, buttonWeight, interfaceSize, favoritesStyle, menuIcon, scrollBehavior, landscapeTopBar, edgeSwipeNavigation
         case addressStyle, addressShowsFavicon, addressShowsReadingTime, addressTap, addressLongPress
         case tabsLayout, thumbnailSize, tabsSort, groupTabsByDomain, autoCloseTabs, comfortMode
         case blockAds, blockTrackers, blockCookieBanners, blockerDisabledHosts, javascriptEnabled, javascriptDisabledHosts, upgradeToHTTPS, clearDataOnCloseAll
@@ -335,6 +344,7 @@ extension Settings {
         desktopHosts = v(.desktopHosts, desktopHosts); customUserAgent = v(.customUserAgent, customUserAgent)
         suspendTabsInLowPower = v(.suspendTabsInLowPower, suspendTabsInLowPower)
         interfaceSize = v(.interfaceSize, interfaceSize)
+        favoritesStyle = v(.favoritesStyle, favoritesStyle)
         // Réglages enregistrés avant la version 2 (interface trop petite et trop fine) : nouveaux défauts plus grands et plus gras,
         // onglets en grille façon Safari. Les choix qui restent valables ne sont pas touchés.
         let version = ((try? c.decodeIfPresent(Int.self, forKey: .defaultsVersion)) ?? nil) ?? 1
