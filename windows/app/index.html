@@ -545,6 +545,7 @@ html:not(.reading) #reader,html:not(.reading) #rbar{display:none!important}
   #props{flex-wrap:wrap;justify-content:center;overflow:visible;max-width:calc(100% - 16px);row-gap:6px;left:8px;right:8px;transform:none;margin:0 auto;width:max-content}
   /* réglages du texte ou de l'outil : en bas (près du pouce et du clavier), à la place de la barre des pages */
   .props-full #props{top:auto;bottom:10px}
+  #toast{max-width:calc(100vw - 24px);white-space:normal;text-align:center;font-size:14.5px;bottom:calc(var(--tb) + 40px + var(--sab))}
   /* ---- téléphone simplifié : options regroupées derrière ⋯, boutons flottants ---- */
   .m-only{display:inline-flex!important}
   #setBtn,#importBtn{display:none!important}
@@ -1580,7 +1581,7 @@ function delSelSmart(){
   const a = S.sel, p = cur(); if (!a || !p) return;
   if (a.t === 'tedit'){
     if (S.editing === a){ S.editing = null; ta.style.display = 'none'; }
-    if (a.txt){ commit(); a.txt = ''; measureTedit(a); toast('🗑️ Texte supprimé · Ctrl+Z pour annuler'); }
+    if (a.txt){ commit(); a.txt = ''; measureTedit(a); toast(TOUCHUI ? '🗑️ Texte supprimé · ↶ pour annuler' : '🗑️ Texte supprimé · Ctrl+Z pour annuler'); }
     S.sel = null; drawOverlay(); refreshThumb(p); syncProps(); return;
   }
   delSel();
@@ -1593,7 +1594,7 @@ async function eraseLine(L){
   const a = await buildTedit(L, p, lines, hi);
   if (TI !== tab || cur() !== p) return;
   a.txt = ''; measureTedit(a); pushHist(pre); A(p).push(a);
-  S.hover = null; drawOverlay(); refreshThumb(p); toast('🗑️ Texte supprimé · Ctrl+Z pour annuler');
+  S.hover = null; drawOverlay(); refreshThumb(p); toast(TOUCHUI ? '🗑️ Texte supprimé · ↶ pour annuler' : '🗑️ Texte supprimé · Ctrl+Z pour annuler');
 }
 function zOrder(front){
   const p = cur(), a = S.sel; if (!p || !a) return;
@@ -2524,7 +2525,7 @@ async function startPara(L, p){
   a._dirty0 = S.dirty; a._snap = pre; pushHist(pre); a._new = true; a._init = JSON.stringify([a.c, a.fs, a.fm, a.b, a.i]);
   if (P.covered.length) a._init += 'x';
   A(p).push(a); S.hover = null; editTedit(a, true);
-  toast('¶ Paragraphe entier : Entrée = nouvelle ligne, Ctrl+Entrée = valider');
+  toast(TOUCHUI ? '¶ Paragraphe entier : retour = nouvelle ligne, ✓ pour valider' : '¶ Paragraphe entier : Entrée = nouvelle ligne, Ctrl+Entrée = valider');
 }
 async function toParagraph(a){
   const p = cur(); if (!p) return;
@@ -3339,7 +3340,7 @@ function setMode(m){
   if (m === 'read'){ S.sel = null; S.psel.clear(); renderThumbs(); buildReader(); }
   else {
     S.zoom = 'fit'; renderThumbs(); setTool('edit'); renderMain(); updPageBar(); syncProps();
-    toast('🔎 Analyse du texte… survole un texte puis clique pour le modifier');
+    toast(TOUCHUI ? '🔎 Analyse du texte… touche une ligne pour la modifier' : '🔎 Analyse du texte… survole un texte puis clique pour le modifier');
   }
 }
 async function pageImage(p, K){
@@ -3505,7 +3506,7 @@ function placeInReader(src, natW, natH, targetW, extra){
   reader.addEventListener('pointermove', move); reader.addEventListener('click', click, true); document.addEventListener('keydown', key, true);
   document.documentElement.classList.add('placing');
   placing = () => { reader.removeEventListener('pointermove', move); reader.removeEventListener('click', click, true); document.removeEventListener('keydown', key, true); ghost.remove(); document.documentElement.classList.remove('placing'); };
-  toast('✍️ Clique sur la page à l’endroit où placer la signature (Échap pour annuler)');
+  toast(TOUCHUI ? '✍️ Touche la page à l’endroit où placer la signature' : '✍️ Clique sur la page à l’endroit où placer la signature (Échap pour annuler)');
 }
 function endPlace(){ if (placing){ const f = placing; placing = null; f(); } }
 

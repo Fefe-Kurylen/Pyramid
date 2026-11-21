@@ -1,6 +1,6 @@
 {
   "name": "pyramid",
-  "version": "1.4.8",
+  "version": "1.4.9",
   "description": "Pyramid PDF — éditeur PDF",
   "main": "main.js",
   "scripts": {
