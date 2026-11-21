@@ -51,7 +51,7 @@ with sync_playwright() as p:
         pg.set_input_files('#fOpen', f'{DOCS}/multi.pdf'); pg.wait_for_timeout(2500)
         check('PDF ouvert en lecture', E("document.documentElement.classList.contains('reading') && document.querySelectorAll('.rpage').length") == 5)
         check('pas de débordement horizontal', E("document.documentElement.scrollWidth <= innerWidth + 1"), E("[document.documentElement.scrollWidth, innerWidth]"))
-        vis = E("""(() => { const ids = ['rNum','rzLbl','rFind','rPrint','rSign','editBtn']; return ids.filter(i => { const b = document.getElementById(i).getBoundingClientRect(); return !(b.width > 0 && b.right <= innerWidth + 1 && b.left >= -1 && b.bottom <= innerHeight + 1); }); })()""")
+        vis = E("""(() => { const ids = ['rNum','rPrint','rSign','rMore','editBtn']; return ids.filter(i => { const b = document.getElementById(i).getBoundingClientRect(); return !(b.width > 0 && b.right <= innerWidth + 1 && b.left >= -1 && b.bottom <= innerHeight + 1); }); })()""")
         check('barre de lecture visible en entier', not vis, vis)
         pg.screenshot(path=f'/tmp/mt/{plat}-1-lecture.png')
         # impression
@@ -95,7 +95,7 @@ with sync_playwright() as p:
         pg.wait_for_timeout(2500)
         check('« Ouvrir avec » ouvre un nouvel onglet', E("document.querySelectorAll('.tab').length") == 2, E("[...document.querySelectorAll('.tab .t')].map(t => t.textContent)"))
         # réglages
-        pg.tap('#setBtn'); pg.wait_for_timeout(600)
+        pg.tap('#mMore'); pg.wait_for_timeout(300); pg.locator('.menu button', has_text='Personnaliser').tap(); pg.wait_for_timeout(600)
         check('réglages : version affichée', 'version 1.3.0' in (E("document.querySelector('[data-uver]')?.textContent || ''")))
         check('réglages tiennent à l’écran', E("(() => { const c = document.querySelector('.modal .card').getBoundingClientRect(); return c.left >= 0 && c.right <= innerWidth + 1; })()"))
         pg.screenshot(path=f'/tmp/mt/{plat}-4-reglages.png')

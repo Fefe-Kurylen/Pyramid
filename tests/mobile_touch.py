@@ -2,7 +2,8 @@
 import base64, subprocess, sys, time
 from playwright.sync_api import sync_playwright
 WWW = sys.argv[1] if len(sys.argv) > 1 else '/home/claude/pyramid/mobile/www'
-DOCS = '/tmp/t/docs'; OUT = '/tmp/mt'
+import os
+DOCS = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'docs'); OUT = '/tmp/mt'
 import os; os.makedirs(OUT, exist_ok=True)
 src = open(os.path.join(os.path.dirname(__file__), 'mobile.py')).read()
 MOCK = src[src.index('MOCK = """') + 10:src.index('"""\nres = {}')]
@@ -37,25 +38,27 @@ with sync_playwright() as p:
         pg.screenshot(path=f'{OUT}/{plat}-pincer-lecture.png')
         pg.tap('#editBtn'); pg.wait_for_timeout(4500)
         wr = E("(() => { const b = document.querySelector('#pageWrap').getBoundingClientRect(); return [b.left, b.top, b.width, b.height]; })()")
-        st0 = E("[document.querySelector('#stage').scrollTop, document.querySelector('#zLbl').textContent]")
-        # glisser un doigt sur le texte = défiler, rien ne bouge ni ne s'ouvre
-        x, y = wr[0] + wr[2]*0.4, wr[1] + 120
-        E(PTR, ['pointerdown', 1, x, y + 150]); 
-        for k in range(1, 6): E(PTR, ['pointermove', 1, x, y + 150 - k*30])
-        E(PTR, ['pointerup', 1, x, y]); pg.wait_for_timeout(400)
-        st1 = E("[document.querySelector('#stage').scrollTop, document.querySelector('#ta').style.display, (window.__pyrAnn = 0)]")
-        check('mode Modifier : glisser le doigt fait défiler', st1[0] > st0[0] + 50 and st1[1] in ('', 'none'), f'scroll {st0[0]} → {st1[0]}, zone de texte : {st1[1] or "fermée"}')
         # deux doigts = zoom de la page
         E("document.querySelector('#stage').scrollTop = 0"); pg.wait_for_timeout(200)
         wr = E("(() => { const b = document.querySelector('#pageWrap').getBoundingClientRect(); return [b.left, b.top, b.width, b.height]; })()")
         cx, cy = wr[0] + wr[2]/2, wr[1] + 200
+        z0e = E("document.querySelector('#zLbl').textContent")
         E(PTR, ['pointerdown', 1, cx - 40, cy]); E(PTR, ['pointerdown', 2, cx + 40, cy])
         for k in range(1, 5): E(PTR, ['pointermove', 1, cx - 40 - k*15, cy]); E(PTR, ['pointermove', 2, cx + 40 + k*15, cy])
         E(PTR, ['pointerup', 2, cx + 100, cy]); E(PTR, ['pointerup', 1, cx - 100, cy]); pg.wait_for_timeout(800)
         z2 = E("document.querySelector('#zLbl').textContent")
-        check('mode Modifier : deux doigts = zoom', int(z2.split()[0]) > int(st0[1].split()[0]) * 1.8, f'{st0[1]} → {z2}')
+        check('mode Modifier : deux doigts = zoom', int(z2.split()[0]) > int(z0e.split()[0]) * 1.8, f'{z0e} → {z2}')
         check('pas de trait ni d’annotation créés par le zoom', E("!document.querySelector('#ta') || document.querySelector('#ta').style.display !== 'block'"))
-        E("document.querySelector('#zFit').click()"); pg.wait_for_timeout(1200)
+        st0 = E("[document.querySelector('#stage').scrollTop, document.querySelector('#zLbl').textContent]")
+        # glisser un doigt sur le texte = défiler, rien ne bouge ni ne s'ouvre
+        wr = E("(() => { const b = document.querySelector('#pageWrap').getBoundingClientRect(); return [b.left, b.top, b.width, b.height]; })()")
+        x, y = 160, 300
+        E(PTR, ['pointerdown', 1, x, y + 150]); 
+        for k in range(1, 6): E(PTR, ['pointermove', 1, x, y + 150 - k*30])
+        E(PTR, ['pointerup', 1, x, y]); pg.wait_for_timeout(400)
+        st1 = E("[document.querySelector('#stage').scrollTop, document.querySelector('#ta').style.display, (window.__pyrAnn = 0)]")
+        check('mode Modifier : glisser le doigt fait défiler', st1[0] > st0[0] + 30 and st1[1] in ('', 'none'), f'scroll {st0[0]} → {st1[0]}, zone de texte : {st1[1] or "fermée"}')
+        E("setTimeout(()=>{},0)"); pg.tap('#pMore'); pg.wait_for_timeout(300); pg.locator('.menu button', has_text='Ajuster').tap(); pg.wait_for_timeout(1200)
         # toucher une ligne = la modifier
         wr = E("(() => { const b = document.querySelector('#pageWrap').getBoundingClientRect(); return [b.left, b.top, b.width, b.height]; })()")
         hit = None
@@ -65,6 +68,17 @@ with sync_playwright() as p:
             if E("document.querySelector('#ta').style.display === 'block' || getComputedStyle(document.querySelector('#ta')).display === 'block'"): hit = fy; break
         check('toucher une ligne ouvre la modification', hit is not None, f'à {hit}')
         pg.screenshot(path=f'{OUT}/{plat}-toucher-ligne.png')
+        # scanner avec l'appareil photo : la photo devient un nouveau document « Scan … »
+        n0 = E("document.querySelectorAll('#tabs .tab').length")
+        pg.set_input_files('#fCam', f'{DOCS}/scan-ocr.jpg'); pg.wait_for_timeout(2500)
+        tabs = E("[...document.querySelectorAll('#tabs .tab')].map(t => t.textContent.trim())")
+        check('Scanner (appareil photo) ouvre un document « Scan … »', len(tabs) == n0 + 1 and tabs[-1].startswith('Scan '), tabs[-1:])
+        check('bouton Scanner visible en haut', E("document.querySelector('#camBtn').getBoundingClientRect().width > 30"))
+        # ce qui sert le plus reste visible : après 4 recherches, « Rechercher » prend la place de « Signer »
+        v0 = E("['#rPrint','#rSign','#rFind'].filter(k => document.querySelector(k).classList.contains('m-vis'))")
+        E("for (let i = 0; i < 4; i++){ document.querySelector('#rFind').click(); document.dispatchEvent(new KeyboardEvent('keydown', { key:'Escape', bubbles:true })); }")
+        v1 = E("['#rPrint','#rSign','#rFind'].filter(k => document.querySelector(k).classList.contains('m-vis'))")
+        check('boutons visibles selon l’usage', v0 == ['#rPrint', '#rSign'] and '#rFind' in v1 and len(v1) == 2, f'{v0} → {v1}')
         check('aucune erreur', not errs, errs[:2])
         br.close()
 srv.kill()

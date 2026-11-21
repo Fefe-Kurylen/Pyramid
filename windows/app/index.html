@@ -30,6 +30,7 @@ html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 html,body{overscroll-behavior:none}
 button,.btn,.ibtn,.thumb,.tab,header,.float,.feats,.menu,#side{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 button,#reader,#stage{touch-action:manipulation}
+.m-only{display:none!important}
 html,body{height:100%;background:var(--bg);color:var(--text);font:14px/1.4 Inter,system-ui,sans-serif;overflow:hidden}
 button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 svg{width:var(--is);height:var(--is);flex:none}
@@ -481,45 +482,108 @@ html:not(.reading) #reader,html:not(.reading) #rbar{display:none!important}
   #pagebar .ibtn{width:34px;height:34px}
   #empty{top:calc(var(--hh) + var(--sat))}
   .drop{padding:36px 20px}
-  /* plus grand sur téléphone */
+  /* ---- téléphone : tout tient sur l'écran, quelle que soit la taille d'interface choisie ---- */
   html,body{font-size:15px}
-  :root,:root[data-density]{--hh:calc(58px*var(--uiz))}
-  header{--ib:calc(44px*var(--uiz));--is:calc(23px*var(--uiz))}
-  .logo .mark{width:calc(var(--ib) - 2px);height:calc(var(--ib) - 2px)}
-  .newtab{width:var(--ib);height:var(--ib)}
-  #tabs{height:calc(48px*var(--uiz))}
-  .has-tabs main,.has-tabs #empty{top:calc(var(--hh) + var(--sat) + 48px*var(--uiz))}
-  .tab{height:calc(40px*var(--uiz));font-size:15.5px;max-width:260px}
+  :root,:root[data-density]{
+    --pb:min(calc(44px*var(--uiz)), calc((100vw - 56px)/8));      /* bouton d'en-tête : 7 boutons + logo sur une ligne */
+    --hh:calc(var(--pb) + 14px);
+    --tabh:min(calc(44px*var(--uiz)), 54px);
+    --tb:min(calc(44px*var(--uiz)), calc((100vw - 64px)/9));      /* barre d'outils du bas : 9 boutons */
+  }
+  header{--ib:var(--pb);--is:calc(var(--pb)*.52);gap:4px;padding-left:8px;padding-right:8px;
+    height:calc(var(--hh) + var(--sat));min-height:0;flex-wrap:wrap;align-content:flex-start;overflow:hidden}
+  .has-tabs header{height:calc(var(--hh) + var(--sat) + var(--tabh))}
+  header>*{flex:none}
+  .logo{height:var(--hh);display:flex;align-items:center}
+  .logo .mark{width:var(--pb);height:var(--pb)}
+  .hsep,#updBtn,#heartBtn,#scanBtn,#dscanBtn{display:none!important}
+  .newtab,header .ibtn{width:var(--pb);height:var(--pb)}
+  #setBtn{margin-left:auto}
+  #exportBtn,#importBtn{width:var(--pb);height:var(--pb);padding:0!important;justify-content:center}
+  #exportBtn span,#importBtn span{display:none}
+  #tabs{order:10;flex:1 0 100%;height:var(--tabh);padding:0 0 6px;overflow-x:auto;overflow-y:hidden}
+  html:not(.has-tabs) #tabs{display:none}
+  #empty{top:calc(var(--hh) + var(--sat))}
+  .has-tabs main,.has-tabs #empty{top:calc(var(--hh) + var(--sat) + var(--tabh))}
+  .tab{height:calc(var(--tabh) - 6px);font-size:15px;max-width:240px}
   .tab svg{width:18px;height:18px}
-  .tab .x{width:32px;height:32px}
-  .drop{padding:40px 18px}
-  .drop .big{width:80px;height:80px;border-radius:22px}
-  .drop .big svg{width:38px;height:38px}
-  .drop h1{font-size:31px}
-  .drop p{font-size:16.5px;line-height:1.5}
-  #empty .btn{height:calc(54px*var(--uiz))!important;font-size:17.5px;padding:0 26px!important;margin:6px 4px 0!important}
+  .tab .x{width:30px;height:30px}
+  /* accueil : défile si besoin, jamais coupé */
+  #empty{display:flex;flex-direction:column;align-items:center;overflow-y:auto;padding:16px 14px calc(24px + var(--sab))}
+  .drop{margin:auto 0;padding:32px 16px;width:100%}
+  .drop .big{width:72px;height:72px;border-radius:20px}
+  .drop .big svg{width:34px;height:34px}
+  .drop h1{font-size:29px}
+  .drop p{font-size:16px;line-height:1.5}
+  #empty .btn{height:52px!important;font-size:17px;padding:0 24px!important;margin:6px 4px 0!important}
   #empty .btn svg{width:22px;height:22px}
-  .feats{gap:10px}
-  .feats span{font-size:14.5px;padding:8px 13px}
-  #rbar,#tools,#pagebar{--ib:calc(44px*var(--uiz));--is:calc(23px*var(--uiz));gap:4px;padding:6px}
+  .feats{gap:8px}
+  .feats span{font-size:14px;padding:7px 12px}
+  /* barres du bas */
+  #rbar,#tools,#pagebar{--ib:var(--tb);--is:calc(var(--tb)*.52);gap:3px;padding:5px}
+  #rbar{--ib:min(calc(44px*var(--uiz)), 50px);--is:calc(var(--ib)*.52)}
   #rbar .sep,#tools .sep{display:none}
   #rPrev,#rNext,#rzOut,#rzIn,#rzFit,#findBtn{display:none!important}
   #rbar .num,#pagebar .num{font-size:15px;padding:0 4px}
-  .zl{font-size:14.5px;min-width:58px}
-  #editBtn{height:var(--ib);font-size:16.5px;padding:0 16px}
+  .zl{font-size:14.5px;min-width:56px}
+  #editBtn{height:var(--ib);font-size:16px;padding:0 14px}
   #tools .ibtn,#pagebar .ibtn{width:var(--ib);height:var(--ib)}
-  #doneBtn{height:var(--ib);min-width:calc(var(--ib) + 10px);justify-content:center}
-  #pagebar{--ib:calc(40px*var(--uiz));--is:calc(21px*var(--uiz))}
+  #tools{justify-content:space-between}
+  #doneBtn{height:var(--ib);min-width:calc(var(--ib) + 8px);justify-content:center;padding:0}
+  #doneBtn span{display:none}
+  #pagebar{--ib:min(calc(40px*var(--uiz)), calc((100vw - 90px)/8))}
   #prev,#next,#mvU,#mvD,#zOut,#zIn{display:none!important}
-  main{bottom:calc(16px + 56px*var(--uiz) + var(--sab))}
-  #rIn{padding-bottom:calc(30px + 56px*var(--uiz))}
-  #side{height:calc(118px*var(--uiz))}
-  .thumb{width:calc(72px*var(--uiz))}
-  .addpage{width:calc(72px*var(--uiz))}
-  .thumb .n{font-size:12.5px}
+  main{bottom:calc(var(--tb) + 26px + var(--sab))}
+  #rIn{padding-bottom:calc(30px + var(--tb) + 20px)}
+  :root{--sideh:min(calc(112px*var(--uiz)), 136px)}
+  #side{height:var(--sideh);padding:8px;align-items:flex-start}
+  .thumb,.addpage{width:calc((var(--sideh) - 46px)/1.42);flex:none}
+  .thumb .n{font-size:12px}
   .menu button{font-size:15.5px;padding:12px 12px}
   .menu small{font-size:13px}
   .flab{font-size:14.5px}
+  #props{flex-wrap:wrap;justify-content:center;overflow:visible;max-width:calc(100% - 16px);row-gap:6px;left:8px;right:8px;transform:none;margin:0 auto;width:max-content}
+  /* réglages du texte ou de l'outil : en bas (près du pouce et du clavier), à la place de la barre des pages */
+  .props-full #props{top:auto;bottom:10px}
+  /* ---- téléphone simplifié : options regroupées derrière ⋯, boutons flottants ---- */
+  .m-only{display:inline-flex!important}
+  #setBtn,#importBtn{display:none!important}
+  #mMore{margin-left:auto}
+  #rzLbl{display:none!important}
+  #rFind,#rPrint,#rSign{display:none!important}
+  #rFind.m-vis,#rPrint.m-vis,#rSign.m-vis{display:inline-flex!important}
+  /* bords plus fondus, pas de flou d'arrière-plan (fluidité) */
+  .float,.menu,.modal .card,#jobs .job{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+  .btn.ghost,header .ibtn,#tools .ibtn{border-color:transparent}
+  #importBtn,#exportBtn,.btn.ghost{border:1px solid rgba(255,255,255,.06)}
+  #rbar .num,#rbar>.ibtn,#pagebar .num,#pagebar>.ibtn,#pagebar .zl,#tools{border-color:rgba(255,255,255,.05)!important}
+  [data-theme=clair] #rbar .num,[data-theme=clair] #rbar>.ibtn,[data-theme=clair] #pagebar .num,[data-theme=clair] #pagebar>.ibtn,[data-theme=clair] #pagebar .zl,[data-theme=clair] #tools{border-color:rgba(0,0,0,.06)!important}
+  .ibtn,.btn{transition:background .12s,color .12s}
+  #rbar{--ib:min(calc(44px*var(--uiz)), calc((100vw - 240px)/3));gap:8px}
+  #tools [data-tool=select],#tools [data-tool=pen],#tools [data-tool=hl],#tools [data-tool=rect],#tools [data-tool=wo]{display:none!important}
+  #tools{justify-content:space-around}
+  #rotL,#rotR,#addPg,#dup,#del,#zFit{display:none!important}
+  /* lecture : pastille de page + boutons flottants ronds + gros bouton Modifier */
+  #rbar{background:none;border:0;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none;padding:0;left:14px;right:14px;gap:10px;overflow:visible;pointer-events:none;bottom:calc(14px + var(--sab))}
+  #rbar>*{pointer-events:auto}
+  #rbar .num,#rbar>.ibtn,#pagebar .num,#pagebar>.ibtn,#pagebar .zl{background:var(--panel);border:1px solid var(--line2);box-shadow:0 8px 24px rgba(0,0,0,.38);border-radius:999px}
+  #rbar .num{height:calc(var(--ib) + 4px);display:inline-flex;align-items:center;padding:0 16px;margin-right:auto;cursor:pointer}
+  #rbar>.ibtn{width:calc(var(--ib) + 4px);height:calc(var(--ib) + 4px)}
+  #editBtn{height:calc(var(--ib) + 10px);border-radius:999px;padding:0 18px;font-size:16.5px;box-shadow:0 10px 28px rgba(200,112,63,.45)}
+  #empty #camBig{margin-top:10px!important}
+  #editBtn svg{width:22px;height:22px}
+  #rIn{padding-bottom:calc(var(--ib) + 50px)}
+  /* modification : petite barre de page flottante */
+  #pagebar{background:none;border:0;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none;padding:0;gap:8px;left:auto;right:12px;transform:none;overflow:visible;pointer-events:none}
+  #pagebar>*{pointer-events:auto}
+  #pagebar .num{height:var(--ib);display:inline-flex;align-items:center;padding:0 14px;cursor:pointer}
+  #pagebar .zl{height:var(--ib);padding:0 12px}
+  #pagebar .sep{display:none}
+  /* miniatures : cachées au départ, la pastille « 1 / 5 » les affiche */
+  html:not(.thumbs-open) #side{display:none!important}
+  .thumbs-open #rbar .num,.thumbs-open #pagebar .num{background:var(--accent);color:#fff;border-color:transparent}
+  .props-full #pagebar{display:none!important}
+}
 }
 </style>
 </head>
@@ -530,6 +594,7 @@ html:not(.reading) #reader,html:not(.reading) #rbar{display:none!important}
   <div id="tabs"></div>
   <button class="ibtn newtab" id="openBtn" title="Ouvrir dans un nouvel onglet (Ctrl+O)" data-ic="plus"></button>
   <button class="ibtn hidden" id="scanBtn" title="Scanner avec le téléphone" data-ic="phone"></button>
+  <button class="ibtn m-only" id="camBtn" title="Scanner un document avec l’appareil photo" data-ic="camera"></button>
   <button class="ibtn hidden" id="dscanBtn" title="Numériser depuis une imprimante ou un scanner" data-ic="scanner"></button>
   <div class="hsep"></div>
   <button class="ibtn" id="undo" title="Annuler (Ctrl+Z)" data-ic="undo" disabled></button>
@@ -537,6 +602,7 @@ html:not(.reading) #reader,html:not(.reading) #rbar{display:none!important}
   <div class="hsep"></div>
   <button id="updBtn" title="Mise à jour de Pyramid PDF"></button>
   <button class="ibtn" id="setBtn" title="Personnaliser Pyramid PDF" data-ic="settings"></button>
+  <button class="ibtn m-only" id="mMore" title="Plus d’options" data-ic="more"></button>
   <button class="ibtn heart" id="heartBtn" title="Soutenir Pyramid PDF" data-ic="heart"></button>
   <div class="hsep"></div>
   <button class="btn ghost" id="importBtn" title="Importer un PDF ou une image" data-ic="import"><span class="hide-m">Importer</span></button>
@@ -550,6 +616,7 @@ html:not(.reading) #reader,html:not(.reading) #rbar{display:none!important}
     <p>Glisse un ou plusieurs fichiers ici, ou choisis-les.<br>PDF · images (JPG, PNG, TIFF…) · Word · Excel · texte<br>Tout reste sur ton appareil 🔒</p>
     <button class="btn primary" id="openBig" data-ic="folder" style="height:44px;padding:0 22px">Ouvrir un fichier</button>
     <button class="btn ghost hidden" id="scanBig" data-ic="phone" style="height:44px;padding:0 18px;margin-left:6px">Scanner avec le téléphone</button>
+    <button class="btn ghost m-only" id="camBig" data-ic="camera" style="height:44px;padding:0 18px;margin-left:6px">Scanner un document</button>
     <button class="btn ghost hidden" id="dscanBig" data-ic="scanner" style="height:44px;padding:0 18px;margin-left:6px">Numériser</button>
     <div class="feats"><span>✏️ Modifier le texte</span><span>✍️ Ajouter du texte</span><span>🖊️ Dessin</span><span>🖍️ Surligner</span><span>✒️ Signature</span><span>🔏 Certificat</span><span>🖼️ Images</span><span>🔄 Pivoter</span><span>🧩 Fusionner</span><span>✂️ Extraire</span></div>
   </div>
@@ -576,6 +643,7 @@ html:not(.reading) #reader,html:not(.reading) #rbar{display:none!important}
       <button class="ibtn hidden" id="rScan" data-ic="scanner" title="Numériser depuis une imprimante ou un scanner"></button>
       <div class="sep"></div>
       <button class="ibtn" id="rSign" data-ic="sign" title="Signer le document"></button>
+      <button class="ibtn m-only" id="rMore" data-ic="more" title="Plus d’options"></button>
       <button class="btn primary" id="editBtn" data-ic="edittext" title="Modifier le document (Ctrl+E)"><span>Modifier</span></button>
     </div>
     <div id="reader"><div id="rIn"></div></div>
@@ -593,6 +661,7 @@ html:not(.reading) #reader,html:not(.reading) #rbar{display:none!important}
       <button class="ibtn" data-tool="rect" title="Tracer un rectangle (R)" data-ic="rect"></button>
       <button class="ibtn" data-tool="wo" title="Masquer / effacer une zone (W)" data-ic="eraser"></button>
       <div class="sep"></div>
+      <button class="ibtn m-only" id="drawBtn" title="Dessiner, surligner, encadrer, masquer, déplacer" data-ic="pen"></button>
       <button class="ibtn" id="imgBtn" title="Insérer une image" data-ic="image"></button>
     </div>
     <div class="float hidden" id="props"></div>
@@ -602,6 +671,7 @@ html:not(.reading) #reader,html:not(.reading) #rbar{display:none!important}
     <div class="float" id="pagebar">
       <button class="ibtn" id="prev" data-ic="left" title="Page précédente (←)"></button>
       <span class="num" id="pnum"></span>
+      <button class="ibtn m-only" id="pMore" data-ic="more" title="Actions sur la page"></button>
       <button class="ibtn" id="next" data-ic="right" title="Page suivante (→)"></button>
       <div class="sep"></div>
       <button class="ibtn" id="rotL" data-ic="rotl" title="Pivoter la page à gauche"></button>
@@ -622,6 +692,8 @@ html:not(.reading) #reader,html:not(.reading) #rbar{display:none!important}
 </main>
 
 <input type="file" id="fOpen" accept="application/pdf,.pdf,image/*,.tif,.tiff,.svg,.docx,.xlsx,.xls,.xlsm,.ods,.txt,.md,.csv,.tsv,.log,.json,.xml,.html,.htm" multiple hidden>
+<input type="file" id="fCam" accept="image/*" capture="environment" hidden>
+<input type="file" id="fCamAdd" accept="image/*" capture="environment" hidden>
 <input type="file" id="fAdd" accept="application/pdf,.pdf,image/*,.tif,.tiff,.svg,.docx,.xlsx,.xls,.xlsm,.ods,.txt,.md,.csv,.tsv,.log,.json,.xml,.html,.htm" multiple hidden>
 <input type="file" id="fImg" accept="image/*" hidden>
 <div id="toast"></div>
@@ -684,6 +756,8 @@ const ICON = {
   clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   search:'<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
   heart:'<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',
+  camera:'<path d="M4 8a2 2 0 0 1 2-2h1.6l1.4-2h6l1.4 2H18a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><circle cx="12" cy="12.5" r="3.6"/>',
+  more:'<circle cx="5" cy="12" r="1.7" fill="currentColor"/><circle cx="12" cy="12" r="1.7" fill="currentColor"/><circle cx="19" cy="12" r="1.7" fill="currentColor"/>',
   import:'<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M12 11v6m-3-3h6"/>',
   tabnew:'<rect x="3" y="5" width="18" height="15" rx="2"/><path d="M3 9h18M12 12v5M9.5 14.5h5"/>',
   pageadd:'<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M12 11v6M9 14h6"/>',
@@ -1049,8 +1123,9 @@ async function renderMain(){
   const seq = ++renderSeq;
   const scale = S.zoom === 'fit' ? fitScale(p) : S.zoom === 'width' ? fitScale(p, true) : S.zoom;
   const { dw, dh } = dims(p);
-  let dpr = Math.min(window.devicePixelRatio || 1, 2.5);
-  const px = dw*scale*dpr * dh*scale*dpr; if (px > 14e6) dpr *= Math.sqrt(14e6 / px);
+  const PH = isMobile(), MAXPX = PH ? 6e6 : 14e6;
+  let dpr = Math.min(window.devicePixelRatio || 1, PH ? 2 : 2.5);
+  const px = dw*scale*dpr * dh*scale*dpr; if (px > MAXPX) dpr *= Math.sqrt(MAXPX / px);
   const pg = await S.docs[p.d].pdf.getPage(p.i+1);
   if (seq !== renderSeq) return;
   const vp = pg.getViewport({ scale: scale*dpr, rotation: rotOf(p) });
@@ -1283,6 +1358,7 @@ function refreshThumb(p){ if(!p) return; const c = document.querySelector(`.thum
 let dragIdx = null;
 function renderThumbs(){
   const side = $('#side'); side.innerHTML = '';
+  if (isMobile() && !document.documentElement.classList.contains('thumbs-open')) return;   // téléphone : miniatures dessinées seulement quand on les affiche
   S.pages.forEach((p, idx) => {
     const t = document.createElement('div'); t.className = 'thumb' + (idx===S.cur?' cur':''); t.dataset.id = p.id; t.draggable = true;
     const { dw, dh } = dims(p);
@@ -1427,6 +1503,7 @@ function setZoom(z){
 }
 
 /* ================= Tools & props ================= */
+const DRAW = [['pen','pen','Dessiner'],['hl','marker','Surligner'],['rect','rect','Rectangle'],['wo','eraser','Masquer / effacer'],['select','cursor','Sélectionner et déplacer']];
 const PREFKEY = { ink:'pen', pen:'pen', rect:'rect', hl:'hl', wo:'wo', text:'text', tedit:'tedit', edit:'edithint' };
 const SWATCH = {
   pen:['#111111','#2563eb','#ef4444','#16a34a','#f97316','#9333ea','#ffffff'],
@@ -1439,6 +1516,7 @@ function setTool(t){
   if (S.editing) commitText();
   S.tool = t; if (!['select','text','edit'].includes(t)) S.sel = null;
   document.querySelectorAll('[data-tool]').forEach(b=>b.classList.toggle('on', b.dataset.tool===t));
+  { const d = DRAW.find(x => x[0] === t), db = $('#drawBtn'); db.classList.toggle('on', !!d); db.innerHTML = ic(d ? d[1] : 'pen'); }
   ov.style.cursor = t==='select' ? 'default' : (t==='text' || t==='edit') ? 'text' : 'crosshair';
   S.hover = null; S.ihover = null;
   if (t === 'edit') ensureLines();
@@ -1467,6 +1545,7 @@ function syncProps(){
   propHist = false;
   const box = $('#props'); const a = S.sel && cur() && A(cur()).includes(S.sel) ? S.sel : null;
   const key = a ? (a.t==='img' ? 'img' : PREFKEY[a.t]) : PREFKEY[S.tool];
+  document.documentElement.classList.toggle('props-full', !!key && key !== 'edithint');
   if (!key){ box.classList.add('hidden'); box.innerHTML=''; return; }
   box.classList.remove('hidden');
   if (key === 'edithint'){ box.innerHTML = '<span class="flab" style="max-width:none">✏️ Touche un texte du PDF pour le modifier</span>'; return; }
@@ -3160,7 +3239,7 @@ async function renderRP(rp){
   try {
     const pg = await S.docs[p.d].pdf.getPage(p.i+1); if (gen !== rp.gen) return;
     const { dw, dh } = dims(p);
-    let dpr = Math.min(window.devicePixelRatio || 1, 2); const px = dw*sc*dpr*dh*sc*dpr; if (px > 9e6) dpr *= Math.sqrt(9e6/px);
+    const RMAX = isMobile() ? 5e6 : 9e6; let dpr = Math.min(window.devicePixelRatio || 1, 2); const px = dw*sc*dpr*dh*sc*dpr; if (px > RMAX) dpr *= Math.sqrt(RMAX/px);
     const vp = pg.getViewport({ scale:sc*dpr, rotation:rotOf(p) });
     const c = document.createElement('canvas'); c.className = 'rc'; c.width = Math.ceil(vp.width); c.height = Math.ceil(vp.height);
     await pg.render({ canvasContext:c.getContext('2d'), viewport:vp }).promise;
@@ -3707,6 +3786,60 @@ $('#importBtn').onclick = () => {
   ]);
 };
 $('#heartBtn').onclick = openSupport;
+/* Téléphone : ce qui sert le plus reste visible (compteur d'usage mémorisé) */
+const USE = (() => { try { return JSON.parse(localStorage.getItem('pyramid-use')) || {}; } catch { return {}; } })();
+const useHit = k => { USE[k] = (USE[k] || 0) + 1; try { localStorage.setItem('pyramid-use', JSON.stringify(USE)); } catch {} if (k in RSLOT) placeRSlots(); };
+const byUse = items => items.map((it, i) => [it, i]).sort((a, b) => ((USE[b[0].use] || 0) - (USE[a[0].use] || 0)) || a[1] - b[1]).map(x => x[0]);
+const RSLOT = { print:['#rPrint', 2.5], sign:['#rSign', 2], find:['#rFind', 0] };   // valeur de départ : Imprimer et Signer
+function placeRSlots(){
+  const top = Object.keys(RSLOT).sort((a, b) => ((USE[b] || 0) + RSLOT[b][1]) - ((USE[a] || 0) + RSLOT[a][1])).slice(0, 2);
+  Object.entries(RSLOT).forEach(([k, [sel]]) => $(sel).classList.toggle('m-vis', top.includes(k)));
+}
+placeRSlots();
+['print','sign','find'].forEach(k => $(RSLOT[k][0]).addEventListener('click', () => useHit(k)));
+/* Téléphone : options regroupées */
+$('#mMore').onclick = () => showMenu($('#mMore'), [
+  ...(TI < 0 ? [{ icon:'folder', label:'Ouvrir un fichier', sub:'PDF, image, Word, Excel', action:() => $('#fOpen').click() }] : [
+    { icon:'tabnew', label:'Ouvrir un autre fichier', sub:'Dans un nouvel onglet', action:() => $('#fOpen').click() },
+    { icon:'pageadd', label:'Insérer des pages ici', sub:`Après la page ${S.cur+1}`, action:() => { importMode = 'after'; $('#fAdd').click(); } },
+    { icon:'pageend', label:'Ajouter à la fin', sub:'Fusionner des fichiers', action:() => { importMode = 'end'; $('#fAdd').click(); } },
+    { icon:'camera', label:'Scanner une page de plus', sub:'Ajoutée à la fin du document', action:() => $('#fCamAdd').click() },
+  ]),
+  '-',
+  { icon:'settings', label:'Personnaliser', sub:'Thème, couleur, taille de l’interface', action:() => $('#setBtn').click() },
+]);
+$('#rMore').onclick = () => showMenu($('#rMore'), [
+  ...byUse([
+    { use:'find', icon:'search', label:'Rechercher dans le document', action:() => $('#rFind').click() },
+    { use:'print', icon:'print', label:'Imprimer', action:() => $('#rPrint').click() },
+    { use:'sign', icon:'sign', label:'Signer', sub:'Poser ta signature sur la page', action:() => $('#rSign').click() },
+  ].filter(it => !$(RSLOT[it.use][0]).classList.contains('m-vis'))),
+  { icon:'camera', label:'Scanner une page de plus', sub:'Ajoutée à la fin du document', action:() => $('#fCamAdd').click() },
+  '-',
+  { icon:'fit', label:'Largeur de l’écran', action:() => applyReaderScale('fit') },
+  { icon:'zoomin', label:'Zoom 150 %', action:() => applyReaderScale(2) },
+  { icon:'zoomin', label:'Zoom 200 %', action:() => applyReaderScale(200/75) },
+]);
+$('#drawBtn').onclick = () => {
+  // un toucher reprend le dernier outil utilisé ; s'il est déjà actif, le menu s'ouvre
+  const last = USE.lastDraw;
+  if (last && S.tool !== last && !DRAW.some(d => d[0] === S.tool)) return setTool(last);
+  showMenu($('#drawBtn'), byUse(DRAW.map(([t, i, l]) => ({ use:'d_'+t, icon:i, label:l + (S.tool === t ? ' ✓' : ''), action:() => { useHit('d_'+t); USE.lastDraw = t; try { localStorage.setItem('pyramid-use', JSON.stringify(USE)); } catch {} setTool(t); } }))));
+};
+$('#pMore').onclick = () => showMenu($('#pMore'), byUse([
+  { use:'p_rotl', icon:'rotl', label:'Pivoter à gauche', action:() => { useHit('p_rotl'); rotate(-90); } },
+  { use:'p_rotr', icon:'rotr', label:'Pivoter à droite', action:() => { useHit('p_rotr'); rotate(90); } },
+  { use:'p_blank', icon:'blank', label:'Ajouter une page vierge', action:() => { useHit('p_blank'); addBlank(); } },
+  { use:'p_dup', icon:'copy', label:'Dupliquer la page', action:() => { useHit('p_dup'); dupPage(); } },
+  { use:'p_del', icon:'trash', label:'Supprimer la page', action:() => { useHit('p_del'); delPage(); } },
+  { use:'p_fit', icon:'fit', label:'Ajuster à l’écran', action:() => { useHit('p_fit'); setZoom('fit'); } },
+]));
+const toggleThumbs = () => {
+  if (!isMobile()) return;
+  document.documentElement.classList.toggle('thumbs-open');
+  requestAnimationFrame(() => { renderThumbs(); if (MODE === 'edit' && S.zoom === 'fit') renderMain(); });
+};
+$('#rNum').onclick = toggleThumbs; $('#pnum').onclick = toggleThumbs;
 // Téléphone (iPhone, Android) : appli sur abonnement, pas de bouton « Soutenir »
 if (window.native && /^(ios|android)$/.test(window.native.platform || '')) $('#heartBtn').style.display = 'none';
 $('#editBtn').onclick = () => setMode('edit');
@@ -3733,6 +3866,12 @@ $('#zLbl').onclick = () => showMenu($('#zLbl'), [
 ], true);
 $('#fOpen').onchange = e => { openFiles(e.target.files, false); e.target.value=''; };
 $('#fAdd').onchange = e => { openFiles(e.target.files, importMode); e.target.value=''; };
+/* Téléphone : scanner avec l'appareil photo (la photo devient une page PDF) */
+const scanName = () => { const d = new Date(), z = n => String(n).padStart(2, '0'); return `Scan ${z(d.getDate())}-${z(d.getMonth()+1)}-${d.getFullYear()} ${z(d.getHours())}h${z(d.getMinutes())}`; };
+const camFiles = fl => [...fl].map((f, i) => new File([f], `${scanName()}${fl.length > 1 ? ' ' + (i+1) : ''}.${(f.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg')}`, { type: f.type || 'image/jpeg' }));
+$('#fCam').onchange = e => { openFiles(camFiles(e.target.files), false); e.target.value=''; };
+$('#fCamAdd').onchange = e => { openFiles(camFiles(e.target.files), TI >= 0 ? 'end' : false); e.target.value=''; };
+$('#camBtn').onclick = () => $('#fCam').click(); $('#camBig').onclick = () => $('#fCam').click();
 $('#exportBtn').onclick = openExport;
 $('#setBtn').onclick = openSettings;
 $('#undo').onclick = undo; $('#redo').onclick = redo;
