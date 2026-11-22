@@ -402,6 +402,30 @@ html:not(.reading) #reader,html:not(.reading) #rbar{display:none!important}
 .dsdev .ibtn{flex:none;width:40px;height:40px}
 .dsdev .ibtn.spin svg{animation:dsspin 1s linear infinite}
 @keyframes dsspin{to{transform:rotate(360deg)}}
+/* ---- mini animations : appui, menus, fenêtres, outils (transform/opacity uniquement, fluide) ---- */
+.ibtn,.btn,.tab,.menu button,.seg button,.feats span,.thumb,.dspg,.zl,.num{transition:transform .16s cubic-bezier(.2,.9,.3,1.35),background .15s,color .15s,box-shadow .2s,opacity .15s}
+.ibtn:active:not(:disabled),.tab:active,.seg button:active,.feats span:active,.zl:active,.num:active{transform:scale(.88)}
+.btn:active:not(:disabled),.menu button:active:not(:disabled),.thumb:active,.dspg:active{transform:scale(.95)}
+.ibtn.on{animation:onPop .3s cubic-bezier(.2,.9,.3,1.4)}
+@keyframes onPop{0%{transform:scale(.82)}60%{transform:scale(1.08)}100%{transform:scale(1)}}
+@keyframes popIn{from{opacity:0;transform:scale(.9) translateY(6px)}to{opacity:1;transform:none}}
+@keyframes cardIn{from{opacity:0;transform:scale(.94) translateY(14px)}to{opacity:1;transform:none}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.menu{animation:popIn .18s cubic-bezier(.2,.9,.3,1.25)}
+.modal{animation:fadeIn .18s ease-out}
+.modal>.card{animation:cardIn .24s cubic-bezier(.2,.9,.3,1.2)}
+.tab{animation:popIn .22s cubic-bezier(.2,.9,.3,1.2)}
+#props:not(.hidden){animation:popIn .2s cubic-bezier(.2,.9,.3,1.2)}
+.reading #rbar>*,#tools>*,#pagebar>*{animation:popIn .26s cubic-bezier(.2,.9,.3,1.25) backwards}
+#tools>.ibtn.on,#rail .ibtn.on{animation:onPop .3s cubic-bezier(.2,.9,.3,1.4)}
+.reading #rbar>:nth-child(2),#tools>:nth-child(2),#pagebar>:nth-child(2){animation-delay:.02s}
+.reading #rbar>:nth-child(3),#tools>:nth-child(3),#pagebar>:nth-child(3){animation-delay:.04s}
+.reading #rbar>:nth-child(4),#tools>:nth-child(4),#pagebar>:nth-child(4){animation-delay:.06s}
+.reading #rbar>:nth-child(n+5),#tools>:nth-child(n+5),#pagebar>:nth-child(n+5){animation-delay:.08s}
+.rip{position:fixed;z-index:9999;pointer-events:none;overflow:hidden}
+.rip i{position:absolute;border-radius:50%;background:var(--accent);opacity:.28;transform:scale(0);animation:rip .5s cubic-bezier(.2,.7,.3,1) forwards}
+@keyframes rip{to{transform:scale(1);opacity:0}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 .dsadd{display:flex;gap:8px;margin-top:8px}
 .dsadd .field{height:34px;font-size:13px}
 .dsadd .btn{height:34px;flex:none}
@@ -1625,6 +1649,16 @@ function dupSel(){
 /* ================= Pointer interaction ================= */
 let drag = null, lastTap = 0;
 const TOUCHUI = matchMedia('(hover: none)').matches;
+document.addEventListener('pointerdown', e => {
+  const b = e.target.closest && e.target.closest('.ibtn,.btn,.menu button,.tab,.feats span,.seg button,.num,.zl');
+  if (!b || b.disabled || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const r = b.getBoundingClientRect(); if (!r.width) return;
+  const w = document.createElement('span'), c = document.createElement('i'), d = Math.max(r.width, r.height) * 2.4;
+  w.className = 'rip';
+  w.style.cssText = `left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px;border-radius:${getComputedStyle(b).borderRadius}`;
+  c.style.cssText = `width:${d}px;height:${d}px;left:${e.clientX - r.left - d/2}px;top:${e.clientY - r.top - d/2}px`;
+  w.appendChild(c); document.body.appendChild(w); setTimeout(() => w.remove(), 520);
+}, { passive:true, capture:true });
 /* Écran tactile : un doigt qui glisse fait défiler la page, toucher = action ; deux doigts = zoom */
 const TP = new Map(); let pinch = null;
 const tdist = () => { const [a, b] = [...TP.values()]; return [Math.hypot(a.x - b.x, a.y - b.y), (a.x + b.x)/2, (a.y + b.y)/2]; };
@@ -3693,7 +3727,9 @@ function popAt(el, anchor, alignLeft){
   document.body.appendChild(el);
   const r = anchor.getBoundingClientRect(), w = el.offsetWidth, h = el.offsetHeight;
   let x = alignLeft ? r.left : r.right - w, y = r.bottom + 6;
-  if (y + h > innerHeight - 8) y = Math.max(8, r.top - h - 6);
+  let up = false;
+  if (y + h > innerHeight - 8){ y = Math.max(8, r.top - h - 6); up = true; }
+  el.style.transformOrigin = (up ? 'bottom ' : 'top ') + (alignLeft ? 'left' : 'right');
   el.style.left = Math.max(8, Math.min(innerWidth - w - 8, x)) + 'px'; el.style.top = y + 'px';
 }
 function showMenu(anchor, items, alignLeft){
