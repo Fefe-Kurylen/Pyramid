@@ -26,6 +26,13 @@ import com.android.billingclient.api.Purchase;
 import com.android.billingclient.api.PurchasesUpdatedListener;
 import com.android.billingclient.api.QueryProductDetailsParams;
 import com.android.billingclient.api.QueryPurchasesParams;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.IntentSenderRequest;
+import androidx.activity.result.contract.ActivityResultContracts;
+import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions;
+import com.google.mlkit.vision.documentscanner.GmsDocumentScanning;
+import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult;
+import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -59,6 +66,45 @@ public class PyramidNativePlugin extends Plugin {
     @Override
     public void load() {
         handleIntent(getActivity().getIntent());
+        scanLauncher = getBridge().registerForActivityResult(new ActivityResultContracts.StartIntentSenderForResult(), r -> {
+            PluginCall c = scanCall; scanCall = null;
+            if (c == null) return;
+            JSArray pages = new JSArray();
+            GmsDocumentScanningResult res = r.getResultCode() == android.app.Activity.RESULT_OK ? GmsDocumentScanningResult.fromActivityResultIntent(r.getData()) : null;
+            if (res != null && res.getPages() != null) {
+                for (GmsDocumentScanningResult.Page p : res.getPages()) {
+                    try (InputStream in = getContext().getContentResolver().openInputStream(p.getImageUri())) {
+                        pages.put(Base64.encodeToString(readAll(in), Base64.NO_WRAP));
+                    } catch (Exception e) { /* page illisible : ignorée */ }
+                }
+            }
+            JSObject o = new JSObject(); o.put("pages", pages); c.resolve(o);
+        });
+    }
+
+    // ===================== Scanner de documents (Google ML Kit) =====================
+    // Détection des bords, redressement, filtres, plusieurs pages, import depuis la galerie ; pages renvoyées en JPEG (base64)
+    private ActivityResultLauncher<IntentSenderRequest> scanLauncher;
+    private PluginCall scanCall;
+
+    @PluginMethod
+    public void scanDoc(PluginCall call) {
+        GmsDocumentScannerOptions opts = new GmsDocumentScannerOptions.Builder()
+            .setGalleryImportAllowed(true)
+            .setPageLimit(50)
+            .setResultFormats(GmsDocumentScannerOptions.RESULT_FORMAT_JPEG)
+            .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_FULL)
+            .build();
+        GmsDocumentScanning.getClient(opts).getStartScanIntent(getActivity())
+            .addOnSuccessListener(sender -> { scanCall = call; scanLauncher.launch(new IntentSenderRequest.Builder(sender).build()); })
+            .addOnFailureListener(e -> call.reject("unsupported"));
+    }
+
+    private static byte[] readAll(InputStream in) throws java.io.IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        byte[] buf = new byte[65536]; int n;
+        while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+        return out.toByteArray();
     }
 
     @Override

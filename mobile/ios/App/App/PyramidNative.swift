@@ -1,6 +1,7 @@
 import UIKit
 import Capacitor
 import StoreKit
+import VisionKit
 
 /// Contrôleur principal : charge Capacitor et enregistre le module natif de Pyramid PDF.
 class MainViewController: CAPBridgeViewController {
@@ -21,8 +22,10 @@ public class PyramidNativePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "subStatus", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "subBuy", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "subRestore", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "subManage", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "subManage", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "scanDoc", returnType: CAPPluginReturnPromise)
     ]
+    private var scanCall: CAPPluginCall?
     /// Abonnement mensuel (App Store Connect : groupe « Pyramid PDF », essai gratuit de 2 semaines, 0,99 €/mois)
     private let subId = "fr.pyramid.pdf.mensuel"
     private var updates: Task<Void, Never>?
@@ -39,6 +42,23 @@ public class PyramidNativePlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
     deinit { updates?.cancel() }
+
+    /// Scanner de documents d'Apple : détection des bords, redressement, plusieurs pages ; renvoie des JPEG (base64)
+    @objc func scanDoc(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            guard VNDocumentCameraViewController.isSupported else { call.reject("unsupported"); return }
+            self.scanCall = call
+            let vc = VNDocumentCameraViewController()
+            vc.delegate = self
+            self.bridge?.viewController?.present(vc, animated: true)
+        }
+    }
+    fileprivate func finishScan(_ c: VNDocumentCameraViewController, pages: [String]?, error: String?) {
+        c.dismiss(animated: true) {
+            if let e = error { self.scanCall?.reject(e) } else { self.scanCall?.resolve(["pages": pages ?? []]) }
+            self.scanCall = nil
+        }
+    }
     private let tsaOk = ["http://timestamp.digicert.com", "http://timestamp.sectigo.com", "https://freetsa.org/tsr"]
 
     /// Fenêtre d'impression d'iOS (aperçu, imprimante AirPrint, copies, recto verso…)
@@ -156,5 +176,29 @@ public class PyramidNativePlugin: CAPPlugin, CAPBridgedPlugin {
             do { try await AppStore.showManageSubscriptions(in: scene) } catch { call.reject(error.localizedDescription); return }
             call.resolve(await self.status())
         }
+    }
+}
+
+/// Résultat du scanner de documents : pages redimensionnées (2480 px max, soit A4 à 300 ppp) puis en JPEG
+extension PyramidNativePlugin: VNDocumentCameraViewControllerDelegate {
+    public func documentCameraViewController(_ controller: VNDocumentCameraViewController, didFinishWith scan: VNDocumentCameraScan) {
+        var pages: [String] = []
+        for i in 0..<scan.pageCount {
+            var img = scan.imageOfPage(at: i)
+            let m = max(img.size.width, img.size.height)
+            if m > 2480 {
+                let k = 2480 / m, sz = CGSize(width: (img.size.width * k).rounded(), height: (img.size.height * k).rounded())
+                let f = UIGraphicsImageRendererFormat.default(); f.scale = 1
+                img = UIGraphicsImageRenderer(size: sz, format: f).image { _ in img.draw(in: CGRect(origin: .zero, size: sz)) }
+            }
+            if let d = img.jpegData(compressionQuality: 0.85) { pages.append(d.base64EncodedString()) }
+        }
+        finishScan(controller, pages: pages, error: nil)
+    }
+    public func documentCameraViewControllerDidCancel(_ controller: VNDocumentCameraViewController) {
+        finishScan(controller, pages: [], error: nil)
+    }
+    public func documentCameraViewController(_ controller: VNDocumentCameraViewController, didFailWithError error: Error) {
+        finishScan(controller, pages: nil, error: error.localizedDescription)
     }
 }

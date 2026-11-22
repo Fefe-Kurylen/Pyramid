@@ -20,6 +20,8 @@
     },
     printPdf: function (data, name) { return P.PyramidNative.printPdf({ data: b64(data), name: safeName(name) }); },
     tsa: async function (url, body) { var r = await P.PyramidNative.tsa({ url: url, body: b64(body) }); return unb64(r.data); },
+    // Scanner de documents du système (iPhone : Apple ; Android : Google) → tableau de JPEG (Uint8Array)
+    scanDoc: P.PyramidNative && P.PyramidNative.scanDoc ? async function () { var r = await P.PyramidNative.scanDoc(); return (r.pages || []).map(unb64); } : undefined,
     onOpenFile: function (cb) { openCb = cb; queue.splice(0).forEach(function (f) { cb(f); }); },
     ready: function () {},
     version: async function () { var i = await P.App.getInfo(); return i.version; }
