@@ -550,7 +550,8 @@ html:not(.reading) #reader,html:not(.reading) #rbar{display:none!important}
   .props-full #props{top:auto;bottom:10px}
   #toast{max-width:calc(100vw - 24px);white-space:normal;text-align:center;font-size:14.5px;bottom:calc(var(--tb) + 40px + var(--sab))}
   /* ---- téléphone simplifié : options regroupées derrière ⋯, boutons flottants ---- */
-  .m-only{display:inline-flex!important}
+  .m-only{display:inline-flex!important;align-items:center;justify-content:center}
+  html:not(.has-tabs) #camBtn{display:none!important}   /* accueil : le gros bouton « Scanner un document » suffit */
   #setBtn,#importBtn{display:none!important}
   #mMore{margin-left:auto}
   #rzLbl{display:none!important}
@@ -3807,7 +3808,6 @@ $('#mMore').onclick = () => showMenu($('#mMore'), [
     { icon:'tabnew', label:'Ouvrir un autre fichier', sub:'Dans un nouvel onglet', action:() => $('#fOpen').click() },
     { icon:'pageadd', label:'Insérer des pages ici', sub:`Après la page ${S.cur+1}`, action:() => { importMode = 'after'; $('#fAdd').click(); } },
     { icon:'pageend', label:'Ajouter à la fin', sub:'Fusionner des fichiers', action:() => { importMode = 'end'; $('#fAdd').click(); } },
-    { icon:'camera', label:'Scanner une page de plus', sub:'Ajoutée à la fin du document', action:() => $('#fCamAdd').click() },
   ]),
   '-',
   { icon:'settings', label:'Personnaliser', sub:'Thème, couleur, taille de l’interface', action:() => $('#setBtn').click() },
@@ -3818,7 +3818,6 @@ $('#rMore').onclick = () => showMenu($('#rMore'), [
     { use:'print', icon:'print', label:'Imprimer', action:() => $('#rPrint').click() },
     { use:'sign', icon:'sign', label:'Signer', sub:'Poser ta signature sur la page', action:() => $('#rSign').click() },
   ].filter(it => !$(RSLOT[it.use][0]).classList.contains('m-vis'))),
-  { icon:'camera', label:'Scanner une page de plus', sub:'Ajoutée à la fin du document', action:() => $('#fCamAdd').click() },
   '-',
   { icon:'fit', label:'Largeur de l’écran', action:() => applyReaderScale('fit') },
   { icon:'zoomin', label:'Zoom 150 %', action:() => applyReaderScale(2) },
@@ -3875,7 +3874,11 @@ const scanName = () => { const d = new Date(), z = n => String(n).padStart(2, '0
 const camFiles = fl => [...fl].map((f, i) => new File([f], `${scanName()}${fl.length > 1 ? ' ' + (i+1) : ''}.${(f.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg')}`, { type: f.type || 'image/jpeg' }));
 $('#fCam').onchange = e => { openFiles(camFiles(e.target.files), false); e.target.value=''; };
 $('#fCamAdd').onchange = e => { openFiles(camFiles(e.target.files), TI >= 0 ? 'end' : false); e.target.value=''; };
-$('#camBtn').onclick = () => $('#fCam').click(); $('#camBig').onclick = () => $('#fCam').click();
+$('#camBtn').onclick = () => TI < 0 ? $('#fCam').click() : showMenu($('#camBtn'), [
+  { icon:'camera', label:'Nouveau document scanné', sub:'Ouvert dans un nouvel onglet', action:() => $('#fCam').click() },
+  { icon:'pageend', label:'Ajouter une page scannée', sub:'À la fin de ce document', action:() => $('#fCamAdd').click() },
+]);
+$('#camBig').onclick = () => $('#fCam').click();
 $('#exportBtn').onclick = openExport;
 $('#setBtn').onclick = openSettings;
 $('#undo').onclick = undo; $('#redo').onclick = redo;
