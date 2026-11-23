@@ -9,15 +9,16 @@ const OUT = process.env.OUT || '/tmp/sc21';
   const A = await fakeEscl({ name: 'HP OfficeJet Test' });
   const app = await electron.launch({ executablePath: require(path.join(W, 'node_modules', 'electron')), args: ['--no-sandbox', W], cwd: W,
     env: { ...process.env, APPDATA: '/tmp/sc21-appdata', XDG_CONFIG_HOME: '/tmp/sc21-appdata' } });
-  const win = await app.firstWindow(); await win.waitForSelector('#dscanBig', { state: 'attached' });
+  const win = await app.firstWindow(); await win.waitForSelector('#dscanBtn', { state: 'attached' });
   await win.setViewportSize({ width: 1280, height: 860 }).catch(() => {});
   const errs = []; win.on('pageerror', e => errs.push(e.message));
   await win.waitForTimeout(800);
   const home = await win.evaluate(() => ({ accueil: !document.querySelector('#empty').classList.contains('hidden'),
-    big: document.querySelector('#dscanBig').offsetWidth > 0, haut: document.querySelector('#dscanBtn').offsetWidth > 0, txt: document.querySelector('#dscanBig').textContent.trim() }));
+    haut: document.querySelector('#dscanBtn').offsetWidth > 0, centre: document.querySelectorAll('#empty .drop button').length,
+    aDroite: document.querySelector('#dscanBtn').getBoundingClientRect().left > innerWidth / 2 }));
   console.log('accueil sans PDF', JSON.stringify(home));
   await win.screenshot({ path: OUT + '/accueil.png' });
-  await win.click('#dscanBig');
+  await win.click('#dscanBtn');
   await win.waitForFunction(() => { const s = document.querySelector('.dscard [data-dev]'); return s && [...s.options].some(o => /HP OfficeJet Test/.test(o.textContent)); }, null, { timeout: 15000 });
   await win.selectOption('.dscard [data-dev]', { label: (await win.$$eval('.dscard [data-dev] option', o => o.map(x => x.textContent))).find(o => /HP OfficeJet/.test(o)) });
   await win.waitForTimeout(500);

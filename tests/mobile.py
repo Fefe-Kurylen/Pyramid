@@ -1,7 +1,7 @@
 # Tests de l'appli mobile (www) en écran de téléphone : Chromium (Android) et WebKit (iPhone), avec un faux Capacitor
 import base64, json, os, subprocess, sys, time
 from playwright.sync_api import sync_playwright
-WWW = sys.argv[1] if len(sys.argv) > 1 else '/home/claude/pdfmobile/www'
+WWW = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'mobile', 'www')
 DOCS = '/tmp/t/docs'
 srv = subprocess.Popen([sys.executable, '-m', 'http.server', '8765', '-d', WWW], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 time.sleep(1)

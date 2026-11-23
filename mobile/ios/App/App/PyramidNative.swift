@@ -23,7 +23,9 @@ public class PyramidNativePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "subBuy", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "subRestore", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "subManage", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "scanDoc", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "scanDoc", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "httpReq", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "scanBrowse", returnType: CAPPluginReturnPromise)
     ]
     private var scanCall: CAPPluginCall?
     /// Abonnement mensuel (App Store Connect : groupe « Pyramid PDF », essai gratuit de 2 semaines, 0,99 €/mois)
@@ -99,6 +101,76 @@ public class PyramidNativePlugin: CAPPlugin, CAPBridgedPlugin {
             guard code == 200, let d = data else { call.reject("HTTP \(code)"); return }
             call.resolve(["data": d.base64EncodedString()])
         }.resume()
+    }
+
+    // ===================== Imprimantes / scanners du Wi-Fi (AirScan / eSCL) =====================
+    /// Requêtes HTTP limitées au réseau local (adresses privées, .local) : l'interface ne peut pas joindre Internet par ici.
+    private static func isLocalHost(_ host: String) -> Bool {
+        var hints = addrinfo(ai_flags: 0, ai_family: AF_UNSPEC, ai_socktype: SOCK_STREAM, ai_protocol: 0,
+                             ai_addrlen: 0, ai_canonname: nil, ai_addr: nil, ai_next: nil)
+        var res: UnsafeMutablePointer<addrinfo>?
+        let h = host.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+        guard getaddrinfo(h, nil, &hints, &res) == 0, let first = res else { return false }
+        defer { freeaddrinfo(first) }
+        var p: UnsafeMutablePointer<addrinfo>? = first
+        var any = false
+        while let a = p {
+            if a.pointee.ai_family == AF_INET {
+                let sin = a.pointee.ai_addr.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { $0.pointee }
+                let ip = UInt32(bigEndian: sin.sin_addr.s_addr), b0 = ip >> 24, b1 = (ip >> 16) & 0xff
+                if !(b0 == 10 || (b0 == 172 && b1 >= 16 && b1 <= 31) || (b0 == 192 && b1 == 168) || (b0 == 169 && b1 == 254)) { return false }
+            } else if a.pointee.ai_family == AF_INET6 {
+                let s6 = a.pointee.ai_addr.withMemoryRebound(to: sockaddr_in6.self, capacity: 1) { $0.pointee }
+                let b = s6.sin6_addr.__u6_addr.__u6_addr8
+                if !((b.0 & 0xfe) == 0xfc || (b.0 == 0xfe && (b.1 & 0xc0) == 0x80)) { return false }
+            }
+            any = true
+            p = a.pointee.ai_next
+        }
+        return any
+    }
+    private lazy var localSession: URLSession = URLSession(configuration: .ephemeral, delegate: NoRedirect(), delegateQueue: nil)
+
+    @objc func httpReq(_ call: CAPPluginCall) {
+        let method = call.getString("method") ?? "GET"
+        let timeout = min(300.0, max(1.0, Double(call.getInt("timeout") ?? 30000) / 1000.0))
+        guard let s = call.getString("url"), let url = URL(string: s), url.scheme == "http", let host = url.host,
+              ["GET", "POST", "DELETE"].contains(method) else { call.reject("Adresse refusée"); return }
+        DispatchQueue.global(qos: .userInitiated).async {
+            guard PyramidNativePlugin.isLocalHost(host) else { call.reject("Adresse hors du réseau local"); return }
+            var req = URLRequest(url: url)
+            req.httpMethod = method
+            req.timeoutInterval = timeout
+            req.setValue("PyramidPDF", forHTTPHeaderField: "User-Agent")
+            if let b = call.getString("body"), !b.isEmpty, let body = Data(base64Encoded: b) {
+                req.httpBody = body
+                req.setValue("text/xml", forHTTPHeaderField: "Content-Type")
+            }
+            self.localSession.dataTask(with: req) { data, resp, err in
+                if let e = err as NSError? {
+                    call.reject(e.code == NSURLErrorTimedOut ? "L’appareil ne répond pas" : "Connexion impossible : \(e.localizedDescription)"); return
+                }
+                let r = resp as? HTTPURLResponse
+                call.resolve(["status": r?.statusCode ?? 0,
+                              "location": r?.value(forHTTPHeaderField: "Location") ?? "",
+                              "type": r?.value(forHTTPHeaderField: "Content-Type") ?? "",
+                              "data": (data ?? Data()).base64EncodedString()])
+            }.resume()
+        }
+    }
+
+    private var browsers: [BonjourScan] = []
+    /// Découverte Bonjour : _uscan._tcp (eSCL en HTTP) pendant ms millisecondes
+    @objc func scanBrowse(_ call: CAPPluginCall) {
+        let ms = min(10000, max(1000, call.getInt("ms") ?? 3500))
+        DispatchQueue.main.async {
+            let b = BonjourScan()
+            self.browsers.append(b)
+            b.start(seconds: Double(ms) / 1000.0) { list in
+                self.browsers.removeAll { $0 === b }
+                call.resolve(["services": list])
+            }
+        }
     }
 
     /// Lecture d'un fichier ouvert depuis l'app Fichiers ou partagé vers Pyramid PDF
@@ -201,4 +273,60 @@ extension PyramidNativePlugin: VNDocumentCameraViewControllerDelegate {
     public func documentCameraViewController(_ controller: VNDocumentCameraViewController, didFailWithError error: Error) {
         finishScan(controller, pages: nil, error: error.localizedDescription)
     }
+}
+
+/// Pas de redirection : les requêtes vers l'imprimante restent sur le réseau local
+final class NoRedirect: NSObject, URLSessionTaskDelegate {
+    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) { completionHandler(nil) }
+}
+
+/// Recherche des imprimantes multifonctions AirScan (Bonjour) puis résolution adresse / port / TXT
+final class BonjourScan: NSObject, NetServiceBrowserDelegate, NetServiceDelegate {
+    private let browser = NetServiceBrowser()
+    private var pending: [NetService] = []
+    private var found: [[String: Any]] = []
+    private var done: (([[String: Any]]) -> Void)?
+
+    func start(seconds: Double, _ cb: @escaping ([[String: Any]]) -> Void) {
+        done = cb
+        browser.delegate = self
+        browser.searchForServices(ofType: "_uscan._tcp.", inDomain: "local.")
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { [weak self] in
+            self?.browser.stop()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { self?.finish() }
+        }
+    }
+    private func finish() {
+        pending.forEach { $0.stop() }
+        pending.removeAll()
+        let cb = done; done = nil
+        cb?(found)
+    }
+    func netServiceBrowser(_ b: NetServiceBrowser, didFind s: NetService, moreComing: Bool) {
+        pending.append(s)
+        s.delegate = self
+        s.resolve(withTimeout: 4)
+    }
+    func netServiceDidResolveAddress(_ s: NetService) {
+        var host: String?
+        for d in s.addresses ?? [] {
+            d.withUnsafeBytes { (p: UnsafeRawBufferPointer) in
+                guard let sa = p.baseAddress?.assumingMemoryBound(to: sockaddr.self) else { return }
+                var buf = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+                if getnameinfo(sa, socklen_t(d.count), &buf, socklen_t(buf.count), nil, 0, NI_NUMERICHOST) == 0 {
+                    let ip = String(cString: buf)
+                    if sa.pointee.sa_family == sa_family_t(AF_INET) { host = ip }        // IPv4 de préférence
+                    else if host == nil { host = ip.components(separatedBy: "%").first }
+                }
+            }
+        }
+        var txt: [String: String] = [:]
+        if let t = s.txtRecordData() {
+            for (k, v) in NetService.dictionary(fromTXTRecord: t) { txt[k] = String(data: v, encoding: .utf8) ?? "" }
+        }
+        if let h = host { found.append(["name": s.name, "host": h, "port": s.port, "secure": false, "txt": txt]) }
+        pending.removeAll { $0 === s }
+    }
+    func netService(_ s: NetService, didNotResolve errorDict: [String: NSNumber]) { pending.removeAll { $0 === s } }
 }

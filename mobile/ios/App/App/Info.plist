@@ -57,6 +57,8 @@
 	<true/>
 	<key>NSAppTransportSecurity</key>
 	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
 		<key>NSExceptionDomains</key>
 		<dict>
 			<key>timestamp.digicert.com</key>
@@ -71,6 +73,12 @@
 			</dict>
 		</dict>
 	</dict>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_uscan._tcp</string>
+	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Pyramid PDF cherche les imprimantes et scanners de ton Wi-Fi pour numériser des documents.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Pyramid PDF peut utiliser l’appareil photo pour prendre ta signature ou une image en photo.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

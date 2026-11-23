@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Les autorités d'horodatage DigiCert et Sectigo ne répondent qu'en HTTP (le jeton est signé, donc sûr) -->
 <network-security-config>
+    <!-- Imprimantes / scanners du Wi-Fi (AirScan / eSCL) : HTTP sur le réseau local uniquement ;
+         le module natif refuse toute adresse qui n'est pas privée (10.x, 172.16-31.x, 192.168.x, .local) -->
+    <base-config cleartextTrafficPermitted="true" />
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="false">timestamp.digicert.com</domain>
         <domain includeSubdomains="false">timestamp.sectigo.com</domain>

@@ -177,6 +177,7 @@ label.opt input{accent-color:var(--accent)}
 .note{font-size:12px;color:var(--muted);margin-top:10px;line-height:1.5}
 .lbl{font-size:12px;color:var(--muted);margin:12px 0 6px;display:block}
 /* ---------- Tabs ---------- */
+html:not(.has-tabs) #undo,html:not(.has-tabs) #redo,html:not(.has-tabs) #redo+.hsep{display:none!important}
 #tabs{display:flex;align-items:center;gap:4px;min-width:0;flex:1;overflow-x:auto;scrollbar-width:none;padding:0 4px;height:100%}
 #tabs::-webkit-scrollbar{display:none}
 .tab{display:flex;align-items:center;gap:7px;height:calc(var(--ib) - 4px);padding:0 4px 0 10px;border-radius:var(--rb);color:var(--muted);max-width:220px;min-width:0;flex:none;cursor:pointer;border:1px solid transparent;font-weight:500;font-size:13.5px;transition:.15s;user-select:none}
@@ -521,7 +522,7 @@ html:not(.reading) #reader,html:not(.reading) #rbar{display:none!important}
   .logo{display:none!important}
   #openBtn{margin-left:-2px}
   .logo .mark{width:var(--pb);height:var(--pb)}
-  .hsep,#updBtn,#heartBtn,#scanBtn,#dscanBtn{display:none!important}
+  .hsep,#updBtn,#heartBtn,#scanBtn,.has-tabs #dscanBtn{display:none!important}
   .newtab,header .ibtn{width:var(--pb);height:var(--pb)}
   #setBtn{margin-left:auto}
   #exportBtn,#importBtn{width:var(--pb);height:var(--pb);padding:0!important;justify-content:center}
@@ -575,16 +576,17 @@ html:not(.reading) #reader,html:not(.reading) #rbar{display:none!important}
   #toast{max-width:calc(100vw - 24px);white-space:normal;text-align:center;font-size:14.5px;bottom:calc(var(--tb) + 40px + var(--sab))}
   /* ---- téléphone simplifié : options regroupées derrière ⋯, boutons flottants ---- */
   .m-only{display:inline-flex!important;align-items:center;justify-content:center}
-  html:not(.has-tabs) #camBtn{display:none!important}   /* accueil : le gros bouton « Scanner un document » suffit */
+  /* tout est aligné à droite (pouce) ; accueil : ⋯ 🖨️ imprimante · 📷 photo · ➕ ouvrir */
   #setBtn,#importBtn{display:none!important}
   /* droitier : ce qui sert le plus est à droite, près du pouce */
-  #openBtn{order:1} #camBtn{order:2} #mMore{order:3;margin-right:auto} #undo{order:4} #redo{order:5} #exportBtn{order:6}
+  #openBtn{order:1;margin-left:auto!important} #camBtn{order:2} #mMore{order:3} #undo{order:4} #redo{order:5} #exportBtn{order:6}
+  html:not(.has-tabs) #mMore{order:0;margin-left:auto} html:not(.has-tabs) #dscanBtn{order:1} html:not(.has-tabs) #camBtn{order:2} html:not(.has-tabs) #openBtn{order:3;margin-left:0!important}
   #tools #imgBtn{order:1} #tools #drawBtn{order:2} #tools [data-tool=text]{order:3} #tools [data-tool=edit]{order:4} #tools #doneBtn{order:5}
   /* icônes un peu plus épaisses */
   .ibtn svg,.btn svg,.menu svg{stroke-width:2.3}
   #rzLbl{display:none!important}
   #rFind,#rPrint,#rSign{display:none!important}
-  #rFind.m-vis,#rPrint.m-vis,#rSign.m-vis{display:inline-flex!important}
+  #rFind.m-vis,#rPrint.m-vis,#rSign.m-vis{display:inline-flex!important;align-items:center;justify-content:center}
   /* bords plus fondus, pas de flou d'arrière-plan (fluidité) */
   .float,.menu,.modal .card,#jobs .job{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
   .btn.ghost,header .ibtn,#tools .ibtn{border-color:transparent}
@@ -592,7 +594,7 @@ html:not(.reading) #reader,html:not(.reading) #rbar{display:none!important}
   #rbar .num,#rbar>.ibtn,#pagebar .num,#pagebar>.ibtn,#pagebar .zl,#tools{border-color:rgba(255,255,255,.05)!important}
   [data-theme=clair] #rbar .num,[data-theme=clair] #rbar>.ibtn,[data-theme=clair] #pagebar .num,[data-theme=clair] #pagebar>.ibtn,[data-theme=clair] #pagebar .zl,[data-theme=clair] #tools{border-color:rgba(0,0,0,.06)!important}
   .ibtn,.btn{transition:background .12s,color .12s}
-  #rbar{--ib:min(calc(52px*var(--uiz)), calc((100vw - 230px)/3));--is:calc(var(--ib)*.54);gap:8px}
+  #rbar{--ib:min(calc(52px*var(--uiz)), calc((100vw - 214px)/4 - 4px));--is:calc(var(--ib)*.54);gap:8px}
   #tools [data-tool=select],#tools [data-tool=pen],#tools [data-tool=hl],#tools [data-tool=rect],#tools [data-tool=wo]{display:none!important}
   #tools{justify-content:space-around}
   #rotL,#rotR,#addPg,#dup,#del,#zFit{display:none!important}
@@ -601,9 +603,10 @@ html:not(.reading) #reader,html:not(.reading) #rbar{display:none!important}
   #rbar>*{pointer-events:auto}
   #rbar .num,#rbar>.ibtn,#pagebar .num,#pagebar>.ibtn,#pagebar .zl{background:var(--panel);border:1px solid var(--line2);box-shadow:0 8px 24px rgba(0,0,0,.38);border-radius:999px}
   #rbar .num{height:calc(var(--ib) + 4px);display:inline-flex;align-items:center;padding:0 16px;margin-right:auto;cursor:pointer}
-  #rbar>.ibtn{width:calc(var(--ib) + 4px);height:calc(var(--ib) + 4px)}
+  #rbar>.ibtn{width:calc(var(--ib) + 4px);height:calc(var(--ib) + 4px);flex:none;padding:0}   /* bulles bien rondes, icône au centre */
+  #rbar .num{flex:none;min-width:calc(var(--ib) + 4px);justify-content:center}
+  #editBtn{flex:0 1 auto;min-width:0;white-space:nowrap;overflow:hidden}
   #editBtn{height:calc(var(--ib) + 10px);border-radius:999px;padding:0 18px;font-size:16.5px;box-shadow:0 10px 28px rgba(200,112,63,.45)}
-  #empty #camBig{margin-top:10px!important}
   #editBtn svg{width:22px;height:22px}
   #rIn{padding-bottom:calc(var(--ib) + 50px)}
   /* modification : petite barre de page flottante */
@@ -648,9 +651,6 @@ html:not(.reading) #reader,html:not(.reading) #rbar{display:none!important}
     <h1>Pyramid PDF</h1>
     <p>Glisse un ou plusieurs fichiers ici, ou choisis-les.<br>PDF · images (JPG, PNG, TIFF…) · Word · Excel · texte<br>Tout reste sur ton appareil 🔒</p>
     <button class="btn primary" id="openBig" data-ic="folder" style="height:44px;padding:0 22px">Ouvrir un fichier</button>
-    <button class="btn ghost hidden" id="scanBig" data-ic="phone" style="height:44px;padding:0 18px;margin-left:6px">Scanner avec le téléphone</button>
-    <button class="btn ghost m-only" id="camBig" data-ic="camera" style="height:44px;padding:0 18px;margin-left:6px">Scanner un document</button>
-    <button class="btn ghost hidden" id="dscanBig" data-ic="scanner" style="height:44px;padding:0 18px;margin-left:6px">Numériser</button>
     <div class="feats"><span>✏️ Modifier le texte</span><span>✍️ Ajouter du texte</span><span>🖊️ Dessin</span><span>🖍️ Surligner</span><span>✒️ Signature</span><span>🔏 Certificat</span><span>🖼️ Images</span><span>🔄 Pivoter</span><span>🧩 Fusionner</span><span>✂️ Extraire</span></div>
   </div>
 </div>
@@ -3934,8 +3934,8 @@ async function phoneScan(mode){
 $('#camBtn').onclick = () => TI < 0 ? phoneScan() : showMenu($('#camBtn'), [
   { icon:'camera', label:'Nouveau document scanné', sub:'Ouvert dans un nouvel onglet', action:() => phoneScan() },
   { icon:'pageend', label:'Ajouter une page scannée', sub:'À la fin de ce document', action:() => phoneScan('end') },
+  ...(window.native && window.native.scannerScan ? [{ icon:'scanner', label:'Numériser avec l’imprimante', sub:'Imprimante ou scanner du Wi-Fi', action:() => openDevScan() }] : []),
 ]);
-$('#camBig').onclick = () => phoneScan();
 $('#exportBtn').onclick = openExport;
 $('#setBtn').onclick = openSettings;
 $('#undo').onclick = undo; $('#redo').onclick = redo;
@@ -4111,8 +4111,8 @@ async function openScanner(){
   SCANUI.open = false; SCANUI.root = null;
 }
 if (window.native && window.native.scanStart){
-  $('#scanBtn').classList.remove('hidden'); $('#scanBig').classList.remove('hidden');
-  $('#scanBtn').onclick = $('#scanBig').onclick = openScanner;
+  $('#scanBtn').classList.remove('hidden');
+  $('#scanBtn').onclick = openScanner;
   window.native.onScan(async ev => {
     const pj = o => jobSet('phone', Object.assign({ icon: 'phone', title: 'Scan du téléphone', open: openScanner }, o));
     if (ev.type === 'phone'){ scanStatus('📱 Téléphone connecté', true); pj({ state: 'run', txt: 'Téléphone connecté : en attente des pages…', pct: null }); }
@@ -4384,7 +4384,7 @@ async function openDevScan(){
   dsJob();
 }
 if (window.native && window.native.scannerScan){
-  ['#rScan', '#dscanBtn', '#dscanBig'].forEach(k => { $(k).classList.remove('hidden'); $(k).onclick = openDevScan; });
+  ['#rScan', '#dscanBtn'].forEach(k => { $(k).classList.remove('hidden'); $(k).onclick = openDevScan; });
   window.native.onScanner(ev => {
     if (ev.type === 'page' && DSCAN.busy){
       dsStatus(`📥 ${ev.n === 1 ? 'Page 1 reçue' : `Page ${ev.n} reçue`}…`, true);

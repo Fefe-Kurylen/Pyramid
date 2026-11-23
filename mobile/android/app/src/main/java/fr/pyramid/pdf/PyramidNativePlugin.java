@@ -4,6 +4,8 @@ import android.content.Context;
 import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
+import android.net.nsd.NsdManager;
+import android.net.nsd.NsdServiceInfo;
 import android.os.Bundle;
 import android.os.CancellationSignal;
 import android.os.ParcelFileDescriptor;
@@ -46,6 +48,8 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
+import java.net.Inet6Address;
+import java.net.InetAddress;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -80,6 +84,110 @@ public class PyramidNativePlugin extends Plugin {
             }
             JSObject o = new JSObject(); o.put("pages", pages); c.resolve(o);
         });
+    }
+
+    // ===================== Imprimantes / scanners du Wi-Fi (AirScan / eSCL) =====================
+    // Requêtes HTTP limitées au réseau local (adresses privées, .local) : l'interface ne peut pas s'en servir pour joindre Internet.
+    private static boolean isLocal(String host) {
+        try {
+            for (InetAddress a : InetAddress.getAllByName(host)) {
+                boolean ula = a instanceof Inet6Address && (a.getAddress()[0] & 0xfe) == 0xfc;
+                if (!(a.isSiteLocalAddress() || a.isLinkLocalAddress() || ula)) return false;
+            }
+            return true;
+        } catch (Exception e) { return false; }
+    }
+
+    @PluginMethod
+    public void httpReq(PluginCall call) {
+        String url = call.getString("url", ""), method = call.getString("method", "GET"), body = call.getString("body", "");
+        int timeout = Math.max(1000, Math.min(300000, call.getInt("timeout", 30000)));
+        new Thread(() -> {
+            HttpURLConnection c = null;
+            try {
+                URL u = new URL(url);
+                if (!"http".equals(u.getProtocol()) || !isLocal(u.getHost())) { call.reject("Adresse hors du réseau local"); return; }
+                if (!Arrays.asList("GET", "POST", "DELETE").contains(method)) { call.reject("Méthode refusée"); return; }
+                c = (HttpURLConnection) u.openConnection();
+                c.setInstanceFollowRedirects(false);
+                c.setRequestMethod(method);
+                c.setConnectTimeout(Math.min(timeout, 10000)); c.setReadTimeout(timeout);
+                c.setRequestProperty("User-Agent", "PyramidPDF");
+                if (body != null && !body.isEmpty()) {
+                    byte[] b = Base64.decode(body, Base64.DEFAULT);
+                    c.setDoOutput(true);
+                    c.setRequestProperty("Content-Type", "text/xml");
+                    c.setFixedLengthStreamingMode(b.length);
+                    try (OutputStream os = c.getOutputStream()) { os.write(b); }
+                }
+                int st = c.getResponseCode();
+                byte[] data = new byte[0];
+                InputStream in = st >= 400 ? c.getErrorStream() : c.getInputStream();
+                if (in != null) try (InputStream i = in) { data = readAll(i); }
+                JSObject o = new JSObject();
+                o.put("status", st);
+                o.put("location", c.getHeaderField("Location") == null ? "" : c.getHeaderField("Location"));
+                o.put("type", c.getContentType() == null ? "" : c.getContentType());
+                o.put("data", Base64.encodeToString(data, Base64.NO_WRAP));
+                call.resolve(o);
+            } catch (java.net.SocketTimeoutException e) { call.reject("L’appareil ne répond pas"); }
+            catch (Exception e) { call.reject("Connexion impossible : " + e.getMessage()); }
+            finally { if (c != null) c.disconnect(); }
+        }).start();
+    }
+
+    // Découverte Bonjour : _uscan._tcp (eSCL en HTTP) pendant ms millisecondes
+    @PluginMethod
+    public void scanBrowse(PluginCall call) {
+        int ms = Math.max(1000, Math.min(10000, call.getInt("ms", 3500)));
+        NsdManager nsd = (NsdManager) getContext().getSystemService(Context.NSD_SERVICE);
+        if (nsd == null) { JSObject o = new JSObject(); o.put("services", new JSArray()); call.resolve(o); return; }
+        final JSArray out = new JSArray();
+        final List<NsdServiceInfo> todo = Collections.synchronizedList(new ArrayList<>());
+        final java.util.concurrent.atomic.AtomicBoolean resolving = new java.util.concurrent.atomic.AtomicBoolean(false);
+        final Runnable[] next = new Runnable[1];
+        next[0] = () -> {
+            if (todo.isEmpty() || !resolving.compareAndSet(false, true)) return;
+            NsdServiceInfo si = todo.remove(0);
+            try {
+                nsd.resolveService(si, new NsdManager.ResolveListener() {
+                    @Override public void onResolveFailed(NsdServiceInfo s, int err) { resolving.set(false); next[0].run(); }
+                    @Override public void onServiceResolved(NsdServiceInfo s) {
+                        try {
+                            if (s.getHost() != null) {
+                                JSObject o = new JSObject(), txt = new JSObject();
+                                o.put("name", s.getServiceName());
+                                o.put("host", s.getHost().getHostAddress().replaceAll("%.*$", ""));
+                                o.put("port", s.getPort());
+                                o.put("secure", false);
+                                for (java.util.Map.Entry<String, byte[]> e : s.getAttributes().entrySet())
+                                    txt.put(e.getKey(), e.getValue() == null ? "" : new String(e.getValue(), java.nio.charset.StandardCharsets.UTF_8));
+                                o.put("txt", txt);
+                                synchronized (out) { out.put(o); }
+                            }
+                        } catch (Exception ignored) {}
+                        resolving.set(false); next[0].run();
+                    }
+                });
+            } catch (Exception e) { resolving.set(false); }
+        };
+        NsdManager.DiscoveryListener dl = new NsdManager.DiscoveryListener() {
+            @Override public void onStartDiscoveryFailed(String t, int e) {}
+            @Override public void onStopDiscoveryFailed(String t, int e) {}
+            @Override public void onDiscoveryStarted(String t) {}
+            @Override public void onDiscoveryStopped(String t) {}
+            @Override public void onServiceFound(NsdServiceInfo si) { todo.add(si); next[0].run(); }
+            @Override public void onServiceLost(NsdServiceInfo si) {}
+        };
+        try { nsd.discoverServices("_uscan._tcp", NsdManager.PROTOCOL_DNS_SD, dl); }
+        catch (Exception e) { JSObject o = new JSObject(); o.put("services", new JSArray()); call.resolve(o); return; }
+        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+            try { nsd.stopServiceDiscovery(dl); } catch (Exception ignored) {}
+            // laisse une seconde aux dernières résolutions
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                JSObject o = new JSObject(); synchronized (out) { o.put("services", out); } call.resolve(o);
+            }, 1000);
+        }, ms);
     }
 
     // ===================== Scanner de documents (Google ML Kit) =====================

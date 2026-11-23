@@ -7,7 +7,7 @@ const PHOTO = process.argv[2] || '/tmp/sc/photo.jpg';
   const app = await electron.launch({ executablePath: require(path.join(W, 'node_modules', 'electron')), args: ['--no-sandbox', W], cwd: W });
   const win = await app.firstWindow(); await win.waitForSelector('#scanBtn', { state: 'attached' }); await win.waitForTimeout(800);
   const errs = []; win.on('pageerror', e => errs.push(e.message));
-  console.log('bouton visible', await win.isVisible('#scanBtn'), '| accueil', await win.isVisible('#scanBig'));
+  console.log('bouton visible', await win.isVisible('#scanBtn'), '| à droite', await win.evaluate(() => document.querySelector('#scanBtn').getBoundingClientRect().left > innerWidth / 2));
   await win.click('#scanBtn'); await win.waitForSelector('.scanqr img');
   const url = (await win.textContent('.scanurl')).trim();
   console.log('adresse', url.replace(/[0-9a-f]{24}$/, '<code>'));
